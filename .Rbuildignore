@@ -1,0 +1,14 @@
+^\.claude$
+^dev$
+^ref$
+^\.Rlib$
+^circlss\.Rcheck$
+^.*\.tar\.gz$
+^\.Rproj\.user$
+^.*\.Rproj$
+^\.github$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^vignettes/articles$
+^LICENSE\.md$

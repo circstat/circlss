@@ -1,0 +1,72 @@
+url: https://circstat.github.io/circlss/
+
+template:
+    bootstrap: 5
+    math-rendering: mathjax
+    bslib:
+        primary: "#2c5aa0"
+
+home:
+    title: circlss — circular-response families for mgcv
+
+articles:
+    - title: Articles
+      navbar: ~
+      contents:
+          - articles/comparison
+
+reference:
+    - title: Model fitting
+      desc: >
+          Fit circular-response GAM, the classical (parametric) circular regressions
+      contents:
+          - circ_gam
+          - circ_lm
+          - plot.circ_gam
+          - plot.circ_lm
+    - title: Diagnostics
+      desc: >
+          Circular residuals and the diagnostic panel grid for circ_gam() and
+          circ_lm() fits -- the circular analogue of plot.lm() and gam.check(),
+          complementing the effect-display plot methods.
+      contents:
+          - circ_resid
+          - circ_check
+    - title: Mixture models
+      desc: >
+          An EM engine for finite mixtures of circular distributional GAMs --
+          density clustering and the circular-linear / circular-circular /
+          linear-circular regression trio.
+      contents:
+          - circ_mix
+          - plot.circ_mix
+          - circ_kmeans
+    - title: Response families
+      desc: >
+          mgcv general families for angular responses: one linear predictor —
+          and so one formula, with smooths — per distribution parameter.
+      contents:
+          - vmlss
+          - pnlss
+          - wclss
+          - wnlss
+          - cardlss
+          - cartlss
+          - jplss
+          - ssjplss
+          - kjlss
+          - vmftlss
+          - ibslss
+          - ajplss
+    - title: Linear-response families
+      desc: >
+          Weight-aware location-scale families for a linear response with circular
+          covariates (l~c), drop-in compatible with circ_gam().
+      contents:
+          - gausslss
+          - gammalss
+    - title: Utilities
+      desc: >
+          Angle conversion and wrapping helpers (radians/degrees, branch wrapping).
+      contents:
+          - rad

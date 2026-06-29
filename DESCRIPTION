@@ -1,0 +1,42 @@
+Package: circlss
+Type: Package
+Title: Location-Scale Families for Circular Regression with 'mgcv'
+Version: 0.1.0
+Authors@R: person("Ziwei", "Huang", email = "huang-ziwei@outlook.com",
+    role = c("aut", "cre"))
+Description: Circular-response distributional families for the general family
+    interface of 'mgcv', so that gam() fits penalized-spline regression models
+    (GAM and GAMLSS) with an angular response and a separate linear predictor
+    for each distribution parameter. The families span the von Mises (vmlss),
+    projected normal (pnlss), wrapped Cauchy (wclss), wrapped normal (wnlss),
+    cardioid (cardlss) and Cartwright power-of-cosine (cartlss) distributions,
+    the Jones-Pewsey family (jplss) with its sine-skewed (ssjplss) and
+    asymmetric (ajplss) forms, and the Kato-Jones (kjlss), flat-topped von
+    Mises (vmftlss) and inverse Batschelet (ibslss) families that add skewness
+    and peakedness. Weight-aware Gaussian (gausslss) and gamma (gammalss)
+    location-scale families cover a linear response over circular covariates.
+    Families with closed-form fourth-order derivatives use full Newton REML
+    smoothing-parameter selection; the others supply first- and second-order
+    derivatives and are fitted by the extended Fellner-Schall optimizer. The
+    front-end circ_gam() wraps gam() for these families, and circ_mix() fits
+    finite mixtures of them by EM.
+License: GPL (>= 3)
+Copyright: file inst/COPYRIGHTS
+Encoding: UTF-8
+Imports:
+    graphics,
+    grDevices,
+    mgcv (>= 1.9.4),
+    parallel,
+    stats
+Suggests:
+    testthat (>= 3.0.0),
+    jsonlite,
+    knitr,
+    rmarkdown,
+    circular
+Config/testthat/edition: 3
+Config/testthat/parallel: true
+URL: https://circstat.github.io/circlss/, https://github.com/circstat/circlss
+BugReports: https://github.com/circstat/circlss/issues
+RoxygenNote: 8.0.0

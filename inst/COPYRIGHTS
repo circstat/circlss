@@ -1,0 +1,17 @@
+Portions of the following files adapt and modify location-scale distributional
+family code from the 'mgcv' package (file R/gamlss.r),
+Copyright (C) Simon N. Wood, licensed GPL (>= 2):
+
+  R/family-gausslss.R   adapted from mgcv::gaulss
+  R/family-gammalss.R   adapted from mgcv::gammals
+
+The modifications, by Ziwei Huang, are: a prior-weight-aware log-likelihood
+(sum(wt * l0) and weighted per-observation derivative blocks), circlss family
+metadata (param_names, param_circular, response_circular), and removal of the
+discrete-design and neighbourhood-cross-validation code paths. Simon Wood neither
+authored nor endorsed this package; his copyright is acknowledged here because his
+code is adapted in the files above.
+
+The combined work is distributed under GPL (>= 3) (GPL-3-or-later). 'mgcv' is
+GPL (>= 2), which is compatible: GPL-2-or-later code may be used under GPL-3, so
+it composes cleanly into this GPL-3-or-later package.
