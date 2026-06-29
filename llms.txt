@@ -1,0 +1,219 @@
+# circlss
+
+`circlss` adds circular families that can be run with
+[mgcv](https://cran.r-project.org/package=mgcv)’s `gam`, enabling
+**Circ**ular Generalized Additive Models for **L**ocation, **S**cale and
+**S**hape.
+
+![Three circular GAM fits, one per geometry: a linear-circular fit on an
+upright can, a circular-linear fit on a cylinder, and a
+circular-circular fit winding once around a torus, each with data on the
+surface and the fitted curve in red](reference/figures/README-trio.png)
+
+| type    | response | covariate              | geometry         |
+|---------|----------|------------------------|------------------|
+| **l~c** | linear   | circular (`bs = "cc"`) | cylinder (“can”) |
+| **c~l** | circular | linear                 | cylinder         |
+| **c~c** | circular | circular (`bs = "cc"`) | torus            |
+
+## Install
+
+``` r
+
+remotes::install_github("circstat/circlss") 
+```
+
+(`circlss` is not yet on CRAN. You can install it with `remotes` from
+Github for now. Requires `mgcv >= 1.9.4`.)
+
+## Usage
+
+`circlss` currently offers 12 circular families that can be plugged in
+to [`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html) directly for
+`c~l` and `c~c` regression.
+
+``` r
+
+library(mgcv);library(circular);library(circlss)
+data(fisherB20c)
+
+d <- data.frame(theta = as.numeric(fisherB20c$theta) * pi/180,  x = fisherB20c$x)
+b1 <- gam(list(theta ~ s(x), ~ s(x, bs="ts")), 
+          family = vmlss(), method = "REML", data = d)
+
+plot(b1)
+predict(b1, type = "response")
+```
+
+Those 12 families are:
+
+- von Mises
+  [`vmlss()`](https://circstat.github.io/circlss/reference/vmlss.md)
+- projected normal
+  [`pnlss()`](https://circstat.github.io/circlss/reference/pnlss.md)
+- wrapped Cauchy
+  [`wclss()`](https://circstat.github.io/circlss/reference/wclss.md)
+- wrapped normal
+  [`wnlss()`](https://circstat.github.io/circlss/reference/wnlss.md)
+- cardioid
+  [`cardlss()`](https://circstat.github.io/circlss/reference/cardlss.md)
+- Cartwright
+  [`cartlss()`](https://circstat.github.io/circlss/reference/cartlss.md)
+- Jones–Pewsey
+  [`jplss()`](https://circstat.github.io/circlss/reference/jplss.md)
+- sine-skewed Jones–Pewsey
+  [`ssjplss()`](https://circstat.github.io/circlss/reference/ssjplss.md)
+- Kato–Jones
+  [`kjlss()`](https://circstat.github.io/circlss/reference/kjlss.md)
+- flat-topped von Mises
+  [`vmftlss()`](https://circstat.github.io/circlss/reference/vmftlss.md)
+- inverse Batschelet
+  [`ibslss()`](https://circstat.github.io/circlss/reference/ibslss.md)
+- asymmetric Jones–Pewsey
+  [`ajplss()`](https://circstat.github.io/circlss/reference/ajplss.md)
+
+For `c~c` regression, one needs to be careful about the knots position,
+as mgcv defaults to the range of the input data, but we normally want
+the whole range (`[0, 2*pi)` or `(-pi, pi]`, according to our data):
+
+``` r
+
+library(mgcv);library(circular);library(circlss)
+data(wind)
+
+w <- as.numeric(wind)   # 310 daily directions, radians on [0, 2pi)
+n <- length(w)
+d <- data.frame(theta = w[-1], prev = w[-n])
+
+b <- gam(list(theta ~ s(prev, bs="cc"), ~ s(prev, bs="cc")),
+         family = vmlss(), method = "REML", data = d,
+         knots = list(prev = c(0, 2 * pi)))
+```
+
+`circlss` offers
+[`circ_gam()`](https://circstat.github.io/circlss/reference/circ_gam.md)
+as a thin wrapper over
+[`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html), and supplies some
+sensible defaults: the cyclic-smooth period knots spanning (`[0, 2*pi)`
+or `(-pi, pi]`, infered from data) by default, a trailing `~ 1` fill (so
+you can model fewer parameters than the family has), `method = "REML"`,
+named response-scale output, and a geometry-aware `print` / `plot`, and
+forwards everything else straight to
+[`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html).
+
+## Documentation
+
+<https://circstat.github.io/circlss/>
+
+# Package index
+
+## Model fitting
+
+Fit circular-response GAM, the classical (parametric) circular
+regressions
+
+- [`circ_gam()`](https://circstat.github.io/circlss/reference/circ_gam.md)
+  [`predict(`*`<circ_gam>`*`)`](https://circstat.github.io/circlss/reference/circ_gam.md)
+  [`fitted(`*`<circ_gam>`*`)`](https://circstat.github.io/circlss/reference/circ_gam.md)
+  [`print(`*`<circ_gam>`*`)`](https://circstat.github.io/circlss/reference/circ_gam.md)
+  : Circular-response GAM
+- [`circ_lm()`](https://circstat.github.io/circlss/reference/circ_lm.md)
+  [`coef(`*`<circ_lm>`*`)`](https://circstat.github.io/circlss/reference/circ_lm.md)
+  [`fitted(`*`<circ_lm>`*`)`](https://circstat.github.io/circlss/reference/circ_lm.md)
+  [`residuals(`*`<circ_lm>`*`)`](https://circstat.github.io/circlss/reference/circ_lm.md)
+  [`logLik(`*`<circ_lm>`*`)`](https://circstat.github.io/circlss/reference/circ_lm.md)
+  [`predict(`*`<circ_lm>`*`)`](https://circstat.github.io/circlss/reference/circ_lm.md)
+  [`print(`*`<circ_lm>`*`)`](https://circstat.github.io/circlss/reference/circ_lm.md)
+  : Classical circular regression
+- [`plot(`*`<circ_gam>`*`)`](https://circstat.github.io/circlss/reference/plot.circ_gam.md)
+  : Plot a circular-response GAM fit
+- [`plot(`*`<circ_lm>`*`)`](https://circstat.github.io/circlss/reference/plot.circ_lm.md)
+  : Plot a classical circular regression fit
+
+## Diagnostics
+
+Circular residuals and the diagnostic panel grid for circ_gam() and
+circ_lm() fits – the circular analogue of plot.lm() and gam.check(),
+complementing the effect-display plot methods.
+
+- [`circ_resid()`](https://circstat.github.io/circlss/reference/circ_resid.md)
+  : Circular regression residuals
+- [`circ_check()`](https://circstat.github.io/circlss/reference/circ_check.md)
+  : Diagnostic panels for a circular regression fit
+
+## Mixture models
+
+An EM engine for finite mixtures of circular distributional GAMs –
+density clustering and the circular-linear / circular-circular /
+linear-circular regression trio.
+
+- [`circ_mix()`](https://circstat.github.io/circlss/reference/circ_mix.md)
+  [`circ_mix.control()`](https://circstat.github.io/circlss/reference/circ_mix.md)
+  [`print(`*`<circ_mix>`*`)`](https://circstat.github.io/circlss/reference/circ_mix.md)
+  [`summary(`*`<circ_mix>`*`)`](https://circstat.github.io/circlss/reference/circ_mix.md)
+  [`logLik(`*`<circ_mix>`*`)`](https://circstat.github.io/circlss/reference/circ_mix.md)
+  [`coef(`*`<circ_mix>`*`)`](https://circstat.github.io/circlss/reference/circ_mix.md)
+  [`predict(`*`<circ_mix>`*`)`](https://circstat.github.io/circlss/reference/circ_mix.md)
+  : Finite mixtures of circular distributional GAMs by EM
+- [`plot(`*`<circ_mix>`*`)`](https://circstat.github.io/circlss/reference/plot.circ_mix.md)
+  : Plot a fitted circular mixture
+- [`circ_kmeans()`](https://circstat.github.io/circlss/reference/circ_kmeans.md)
+  : Circular k-means clustering
+
+## Response families
+
+mgcv general families for angular responses: one linear predictor — and
+so one formula, with smooths — per distribution parameter.
+
+- [`vmlss()`](https://circstat.github.io/circlss/reference/vmlss.md) :
+  von Mises location-scale family
+- [`pnlss()`](https://circstat.github.io/circlss/reference/pnlss.md) :
+  Projected normal location family
+- [`wclss()`](https://circstat.github.io/circlss/reference/wclss.md) :
+  Wrapped Cauchy location-scale family
+- [`wnlss()`](https://circstat.github.io/circlss/reference/wnlss.md) :
+  Wrapped normal location-scale family
+- [`cardlss()`](https://circstat.github.io/circlss/reference/cardlss.md)
+  : Cardioid location-scale family
+- [`cartlss()`](https://circstat.github.io/circlss/reference/cartlss.md)
+  : Cartwright power-of-cosine location-scale family
+- [`jplss()`](https://circstat.github.io/circlss/reference/jplss.md) :
+  Jones-Pewsey location-concentration-shape family
+- [`ssjplss()`](https://circstat.github.io/circlss/reference/ssjplss.md)
+  : Sine-skewed Jones-Pewsey location-concentration-shape-skewness
+  family
+- [`kjlss()`](https://circstat.github.io/circlss/reference/kjlss.md) :
+  Kato-Jones Mobius four-parameter family
+- [`vmftlss()`](https://circstat.github.io/circlss/reference/vmftlss.md)
+  : Flat-topped von Mises location-concentration-shape family
+- [`ibslss()`](https://circstat.github.io/circlss/reference/ibslss.md) :
+  Inverse Batschelet location-concentration-skewness-peakedness family
+- [`ajplss()`](https://circstat.github.io/circlss/reference/ajplss.md) :
+  Asymmetric Jones-Pewsey location-concentration-shape-asymmetry family
+
+## Linear-response families
+
+Weight-aware location-scale families for a linear response with circular
+covariates (l~c), drop-in compatible with circ_gam().
+
+- [`gausslss()`](https://circstat.github.io/circlss/reference/gausslss.md)
+  : Weight-aware Gaussian location-scale family
+- [`gammalss()`](https://circstat.github.io/circlss/reference/gammalss.md)
+  : Weight-aware gamma location-scale family
+
+## Utilities
+
+Angle conversion and wrapping helpers (radians/degrees, branch
+wrapping).
+
+- [`rad()`](https://circstat.github.io/circlss/reference/rad.md)
+  [`deg()`](https://circstat.github.io/circlss/reference/rad.md)
+  [`wrap()`](https://circstat.github.io/circlss/reference/rad.md) :
+  Radian conversion helpers
+
+# Articles
+
+### Articles
+
+- [circlss among circular-response regression
+  packages](https://circstat.github.io/circlss/articles/comparison.md):
