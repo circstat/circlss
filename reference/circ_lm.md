@@ -26,7 +26,9 @@ circ_lm(
   order = 1L,
   init = NULL,
   tol = 1e-08,
-  maxit = 100L,
+  maxit = 1000L,
+  se = c("asymptotic", "bootstrap"),
+  R = 999L,
   verbose = FALSE
 )
 
@@ -90,6 +92,20 @@ print(x, digits = max(3L, getOption("digits") - 3L), ...)
 
   IRLS convergence tolerance, iteration cap, and per-iteration logging
   (`"cl"` only).
+
+- se:
+
+  How standard errors are computed (`"cl"` only). `"asymptotic"`
+  (default) uses the expected-information formulae; `"bootstrap"`
+  replaces them with a parametric bootstrap – simulate from the fitted
+  vM(\\\mu_i, \kappa_i\\), refit, and take the spread of the estimates –
+  which Fisher (1993, Sec. 8.4) recommends below \\n \approx 25\\ –
+  \\30\\, where the asymptotic SEs are unreliable. Stochastic, so set a
+  seed for reproducibility.
+
+- R:
+
+  Number of bootstrap resamples when `se = "bootstrap"`.
 
 - object, x:
 
@@ -164,7 +180,14 @@ p-values) reproduce `circular` to machine precision. The reported
 the inverse Bessel ratio, and circlss returns the machine-precision
 inverse (the exact \\\kappa\\ solving \\A_1(\kappa) = R\\) where
 `circular` uses the classical piecewise approximation – a gap at that
-approximation's error level (~1e-3), largest at high concentration.
+approximation's error level (~1e-3), largest at high concentration. One
+deliberate departure: the reported `logLik` (and `aic`/`bic`) is the
+*full* von Mises log-likelihood with every estimated parameter counted
+(\\\mu_0\\ and \\\kappa\\ included), so it exceeds `lm.circular`'s
+printed `log.lik` by the \\n\log 2\pi\\ normalisation `circular` drops –
+putting circlss's AIC on the standard scale, comparable to
+[`circ_gam`](https://circstat.github.io/circlss/reference/circ_gam.md)
+or a `glm`.
 
 ## References
 
@@ -203,6 +226,10 @@ predict(m, data.frame(x = c(-1, 0, 1)))
 
 ## cl: mixed model -- mean and log-kappa both linear in x
 circ_lm(list(theta ~ x, ~ x), dat, type = "cl")
+
+## cl: bootstrap SEs (Fisher 1993 Sec. 8.4) -- preferred at small n
+set.seed(1)
+circ_lm(theta ~ x, dat, type = "cl", se = "bootstrap", R = 199)
 
 ## cl: seed the mixed fit from separately fitted mean-only / kappa-only models
 b0 <- circ_lm(theta ~ x, dat, type = "cl")

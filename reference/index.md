@@ -103,3 +103,16 @@ wrapping).
   [`deg()`](https://circstat.github.io/circlss/reference/rad.md)
   [`wrap()`](https://circstat.github.io/circlss/reference/rad.md) :
   Radian conversion helpers
+
+## Datasets
+
+Circular-response data sets worked through the package: the classical
+(circ_lm), additive multi-covariate (circ_gam), and bimodal mixture
+(circ_mix) examples.
+
+- [`periwinkles`](https://circstat.github.io/circlss/reference/periwinkles.md)
+  : Movements of small blue periwinkles
+- [`songbirds`](https://circstat.github.io/circlss/reference/songbirds.md)
+  : Flight orientation of nocturnal migrating songbirds
+- [`windfarm`](https://circstat.github.io/circlss/reference/windfarm.md)
+  : Wind direction at a South African wind farm (ten-minute records)
