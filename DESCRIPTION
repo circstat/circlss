@@ -23,6 +23,9 @@ Description: Circular-response distributional families for the general family
 License: GPL (>= 3)
 Copyright: file inst/COPYRIGHTS
 Encoding: UTF-8
+Depends:
+    R (>= 2.10)
+LazyData: true
 Imports:
     graphics,
     grDevices,
