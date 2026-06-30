@@ -70,3 +70,12 @@ reference:
           Angle conversion and wrapping helpers (radians/degrees, branch wrapping).
       contents:
           - rad
+    - title: Datasets
+      desc: >
+          Circular-response data sets worked through the package: the classical
+          (circ_lm), additive multi-covariate (circ_gam), and bimodal mixture
+          (circ_mix) examples.
+      contents:
+          - periwinkles
+          - songbirds
+          - windfarm
