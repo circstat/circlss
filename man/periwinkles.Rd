@@ -16,8 +16,7 @@ A data frame with 31 rows and 4 columns:
 }
 \source{
 Fisher, N. I. (1993) \emph{Statistical Analysis of Circular Data}.
-  Cambridge University Press, Appendix B.20 (pp. 252--253). Bundled from
-  \code{circular::fisherB20}.
+  Cambridge University Press, Appendix B.20 (pp. 252--253).
 }
 \usage{
 periwinkles
