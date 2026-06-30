@@ -132,8 +132,14 @@ spellings (<code>"c-l"</code>, <code>"c-c"</code>, <code>"l-c"</code>) are accep
 
 
 <dt id="arg-init">init<a class="anchor" aria-label="anchor" href="#arg-init"></a></dt>
-<dd><p>Optional starting values for the mean-direction coefficients
-(<code>"cl"</code> only); defaults to zero.</p></dd>
+<dd><p>Starting values for the <code>"cl"</code> iteration. <code>NULL</code>
+(default) starts cold: all coefficients zero, so \(\kappa \equiv 1\). A
+named list <code>list(beta=, alpha=, gamma=)</code> sets explicit starts – any
+component omitted falls back to its cold value; <code>beta</code> and <code>gamma</code>
+take one value per covariate, <code>alpha</code> a single number. This lets you seed
+the joint (mixed) fit with estimates from separately fitted mean-only and
+kappa-only models, as Fisher (1993, Sec. 6.4.4) suggests. A bare numeric
+vector is taken, as before, as the mean-direction coefficients (<code>beta</code>).</p></dd>
 
 
 <dt id="arg-tol-maxit-verbose">tol, maxit, verbose<a class="anchor" aria-label="anchor" href="#arg-tol-maxit-verbose"></a></dt>
@@ -189,7 +195,12 @@ to that property); likewise the <code>cc</code> harmonic model recovers its mean
 constant \(\kappa\); <code>list(theta ~ 1, ~ z)</code> models
 \(\log\kappa = \alpha + z^\top\gamma\) with constant \(\mu\);
 <code>list(theta ~ x, ~ x)</code> is the mixed model. The mixed model ties
-\(\mu\) and \(\kappa\) to one shared design.</p>
+\(\mu\) and \(\kappa\) to one shared design. Any of these may carry several
+covariates (<code>theta ~ x + z</code>); only <code>cc</code>/<code>lc</code> are single-predictor.
+The mixed iteration starts cold (\(\kappa \equiv 1\)) by default; pass
+<code>init = list(beta=, alpha=, gamma=)</code> to seed it from your own starting
+values – e.g. the estimates of separately fitted mean-only and kappa-only
+models, the two-stage start Fisher (1993) Sec. 6.4.4 describes.</p>
 <p><strong>cc – circular on circular.</strong> The Sarma and Jammalamadaka (1993) harmonic
 fit: <code>cos(theta)</code> and <code>sin(theta)</code> regressed by least squares on a
 degree-<code>order</code> trigonometric polynomial of the angular predictor and
@@ -240,6 +251,16 @@ in R</em>. Oxford University Press.</p>
 <span></span>
 <span><span class="co">## cl: mixed model -- mean and log-kappa both linear in x</span></span>
 <span><span class="fu">circ_lm</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="va">theta</span> <span class="op">~</span> <span class="va">x</span>, <span class="op">~</span> <span class="va">x</span><span class="op">)</span>, <span class="va">dat</span>, type <span class="op">=</span> <span class="st">"cl"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co">## cl: seed the mixed fit from separately fitted mean-only / kappa-only models</span></span>
+<span><span class="va">b0</span> <span class="op">&lt;-</span> <span class="fu">circ_lm</span><span class="op">(</span><span class="va">theta</span> <span class="op">~</span> <span class="va">x</span>, <span class="va">dat</span>, type <span class="op">=</span> <span class="st">"cl"</span><span class="op">)</span></span>
+<span><span class="va">k0</span> <span class="op">&lt;-</span> <span class="fu">circ_lm</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="va">theta</span> <span class="op">~</span> <span class="fl">1</span>, <span class="op">~</span> <span class="va">x</span><span class="op">)</span>, <span class="va">dat</span>, type <span class="op">=</span> <span class="st">"cl"</span><span class="op">)</span></span>
+<span><span class="fu">circ_lm</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="va">theta</span> <span class="op">~</span> <span class="va">x</span>, <span class="op">~</span> <span class="va">x</span><span class="op">)</span>, <span class="va">dat</span>, type <span class="op">=</span> <span class="st">"cl"</span>,</span>
+<span>        init <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>beta <span class="op">=</span> <span class="va">b0</span><span class="op">$</span><span class="va">beta</span>, alpha <span class="op">=</span> <span class="va">k0</span><span class="op">$</span><span class="va">alpha</span>, gamma <span class="op">=</span> <span class="va">k0</span><span class="op">$</span><span class="va">gamma</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co">## cl: several covariates (mean and concentration share the design)</span></span>
+<span><span class="va">dat</span><span class="op">$</span><span class="va">z</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
+<span><span class="fu">circ_lm</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="va">theta</span> <span class="op">~</span> <span class="va">x</span> <span class="op">+</span> <span class="va">z</span>, <span class="op">~</span> <span class="va">x</span> <span class="op">+</span> <span class="va">z</span><span class="op">)</span>, <span class="va">dat</span>, type <span class="op">=</span> <span class="st">"cl"</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co">## cc / lc: harmonic fits on an angular predictor</span></span>
 <span><span class="va">phi</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">0</span>, <span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span><span class="op">)</span></span>

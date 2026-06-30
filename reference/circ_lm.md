@@ -76,8 +76,15 @@ print(x, digits = max(3L, getOption("digits") - 3L), ...)
 
 - init:
 
-  Optional starting values for the mean-direction coefficients (`"cl"`
-  only); defaults to zero.
+  Starting values for the `"cl"` iteration. `NULL` (default) starts
+  cold: all coefficients zero, so \\\kappa \equiv 1\\. A named list
+  `list(beta=, alpha=, gamma=)` sets explicit starts – any component
+  omitted falls back to its cold value; `beta` and `gamma` take one
+  value per covariate, `alpha` a single number. This lets you seed the
+  joint (mixed) fit with estimates from separately fitted mean-only and
+  kappa-only models, as Fisher (1993, Sec. 6.4.4) suggests. A bare
+  numeric vector is taken, as before, as the mean-direction coefficients
+  (`beta`).
 
 - tol, maxit, verbose:
 
@@ -131,7 +138,13 @@ the sub-model the same way `circ_gam` reads a formula list:
 constant \\\kappa\\; `list(theta ~ 1, ~ z)` models \\\log\kappa =
 \alpha + z^\top\gamma\\ with constant \\\mu\\; `list(theta ~ x, ~ x)` is
 the mixed model. The mixed model ties \\\mu\\ and \\\kappa\\ to one
-shared design.
+shared design. Any of these may carry several covariates
+(`theta ~ x + z`); only `cc`/`lc` are single-predictor. The mixed
+iteration starts cold (\\\kappa \equiv 1\\) by default; pass
+`init = list(beta=, alpha=, gamma=)` to seed it from your own starting
+values – e.g. the estimates of separately fitted mean-only and
+kappa-only models, the two-stage start Fisher (1993) Sec. 6.4.4
+describes.
 
 **cc – circular on circular.** The Sarma and Jammalamadaka (1993)
 harmonic fit: `cos(theta)` and `sin(theta)` regressed by least squares
@@ -190,6 +203,16 @@ predict(m, data.frame(x = c(-1, 0, 1)))
 
 ## cl: mixed model -- mean and log-kappa both linear in x
 circ_lm(list(theta ~ x, ~ x), dat, type = "cl")
+
+## cl: seed the mixed fit from separately fitted mean-only / kappa-only models
+b0 <- circ_lm(theta ~ x, dat, type = "cl")
+k0 <- circ_lm(list(theta ~ 1, ~ x), dat, type = "cl")
+circ_lm(list(theta ~ x, ~ x), dat, type = "cl",
+        init = list(beta = b0$beta, alpha = k0$alpha, gamma = k0$gamma))
+
+## cl: several covariates (mean and concentration share the design)
+dat$z <- rnorm(n)
+circ_lm(list(theta ~ x + z, ~ x + z), dat, type = "cl")
 
 ## cc / lc: harmonic fits on an angular predictor
 phi <- runif(n, 0, 2 * pi)
