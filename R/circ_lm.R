@@ -22,8 +22,14 @@
 #' @param order Order of the trigonometric polynomial for \code{"cc"} and
 #'   \code{"lc"} (number of harmonics of the angular predictor). Ignored for
 #'   \code{"cl"}.
-#' @param init Optional starting values for the mean-direction coefficients
-#'   (\code{"cl"} only); defaults to zero.
+#' @param init Starting values for the \code{"cl"} iteration. \code{NULL}
+#'   (default) starts cold: all coefficients zero, so \eqn{\kappa \equiv 1}. A
+#'   named list \code{list(beta=, alpha=, gamma=)} sets explicit starts -- any
+#'   component omitted falls back to its cold value; \code{beta} and \code{gamma}
+#'   take one value per covariate, \code{alpha} a single number. This lets you seed
+#'   the joint (mixed) fit with estimates from separately fitted mean-only and
+#'   kappa-only models, as Fisher (1993, Sec. 6.4.4) suggests. A bare numeric
+#'   vector is taken, as before, as the mean-direction coefficients (\code{beta}).
 #' @param tol,maxit,verbose IRLS convergence tolerance, iteration cap, and
 #'   per-iteration logging (\code{"cl"} only).
 #' @param object,x A fitted \code{circ_lm} model.
@@ -59,7 +65,12 @@
 #' constant \eqn{\kappa}; \code{list(theta ~ 1, ~ z)} models
 #' \eqn{\log\kappa = \alpha + z^\top\gamma} with constant \eqn{\mu};
 #' \code{list(theta ~ x, ~ x)} is the mixed model. The mixed model ties
-#' \eqn{\mu} and \eqn{\kappa} to one shared design.
+#' \eqn{\mu} and \eqn{\kappa} to one shared design. Any of these may carry several
+#' covariates (\code{theta ~ x + z}); only \code{cc}/\code{lc} are single-predictor.
+#' The mixed iteration starts cold (\eqn{\kappa \equiv 1}) by default; pass
+#' \code{init = list(beta=, alpha=, gamma=)} to seed it from your own starting
+#' values -- e.g. the estimates of separately fitted mean-only and kappa-only
+#' models, the two-stage start Fisher (1993) Sec. 6.4.4 describes.
 #'
 #' \strong{cc -- circular on circular.} The Sarma and Jammalamadaka (1993) harmonic
 #' fit: \code{cos(theta)} and \code{sin(theta)} regressed by least squares on a
@@ -109,6 +120,16 @@
 #'
 #' ## cl: mixed model -- mean and log-kappa both linear in x
 #' circ_lm(list(theta ~ x, ~ x), dat, type = "cl")
+#'
+#' ## cl: seed the mixed fit from separately fitted mean-only / kappa-only models
+#' b0 <- circ_lm(theta ~ x, dat, type = "cl")
+#' k0 <- circ_lm(list(theta ~ 1, ~ x), dat, type = "cl")
+#' circ_lm(list(theta ~ x, ~ x), dat, type = "cl",
+#'         init = list(beta = b0$beta, alpha = k0$alpha, gamma = k0$gamma))
+#'
+#' ## cl: several covariates (mean and concentration share the design)
+#' dat$z <- rnorm(n)
+#' circ_lm(list(theta ~ x + z, ~ x + z), dat, type = "cl")
 #'
 #' ## cc / lc: harmonic fits on an angular predictor
 #' phi <- runif(n, 0, 2 * pi)
@@ -274,6 +295,62 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
   fit
 }
 
+## Resolve `init` into starting values (beta, alpha, gamma) of the right lengths.
+## init: NULL -> cold (beta = gamma = 0, alpha = 0); list(beta=, alpha=, gamma=)
+## -> explicit starts, any omitted component falling back to cold; bare numeric
+## -> the mean-direction coefficients (beta). Lets a caller hand in estimates from
+## separately fitted mean-only / kappa-only models as the joint iteration's start.
+.circ_lm_cl_starts <- function(X, model, init) {
+  p <- ncol(X)
+  cold <- list(beta = rep(0, p), gamma = rep(0, p), alpha = 0)
+  if (is.null(init)) return(cold)
+
+  ## explicit named list: take what is given, validate lengths, warn on misuse.
+  if (is.list(init)) {
+    bad <- setdiff(names(init), c("beta", "alpha", "gamma"))
+    if (length(bad))
+      warning("ignoring unknown init component(s): ", paste(bad, collapse = ", "),
+              ".", call. = FALSE)
+    g <- cold
+    if (!is.null(init$beta)) {
+      if (model == "kappa")
+        warning("init$beta is unused when only the concentration is modelled.",
+                call. = FALSE)
+      else if (length(init$beta) != p)
+        stop(sprintf("init$beta must have length %d (one per mean covariate).", p),
+             call. = FALSE)
+      else g$beta <- as.numeric(init$beta)
+    }
+    if (!is.null(init$gamma)) {
+      if (model == "mean")
+        warning("init$gamma is unused when only the mean direction is modelled.",
+                call. = FALSE)
+      else if (length(init$gamma) != p)
+        stop(sprintf("init$gamma must have length %d (one per concentration covariate).", p),
+             call. = FALSE)
+      else g$gamma <- as.numeric(init$gamma)
+    }
+    if (!is.null(init$alpha)) {
+      if (model == "mean")
+        warning("init$alpha is unused when only the mean direction is modelled.",
+                call. = FALSE)
+      else if (length(init$alpha) != 1L)
+        stop("init$alpha must be a single number.", call. = FALSE)
+      else g$alpha <- as.numeric(init$alpha)
+    }
+    return(g)
+  }
+
+  ## legacy: a bare numeric vector seeds the mean-direction coefficients.
+  if (model == "kappa")
+    warning("numeric 'init' seeds the mean-direction coefficients, unused for a ",
+            "concentration-only model; use init = list(alpha=, gamma=).",
+            call. = FALSE)
+  g <- cold
+  g$beta <- rep_len(as.numeric(init), p)
+  g
+}
+
 ## Green (1984) IRLS for the von Mises MLE. Mean: mu_i = mu0 + 2*atan(X beta),
 ## constant kappa. Kappa: log kappa_i = alpha + X gamma, constant mu. Mixed: both.
 ## Scores and expected-information weights follow Fisher (1993) Sec. 6.4 (the
@@ -285,15 +362,24 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
   linkinv <- function(eta) 2 * atan(eta)
   mu_eta  <- function(eta) 2 / (1 + eta^2)
   log_i0  <- function(k) k + log(besselI(k, 0, expon.scaled = TRUE))
+  ## kappa = exp(eta), capped where the scaled Bessel ratio stays finite:
+  ## besselI(., expon.scaled) underflows to 0 (=> A1, log_i0 -> NaN) near
+  ## kappa ~ 2e5, so hold eta <= 11 (kappa <~ 6e4). Real fits stay far below this;
+  ## the cap only fences a divergent IRLS step (e.g. from a poor user-supplied init).
+  kappa_of <- function(eta) exp(pmin(pmax(eta, -50), 11))
+  ## a singular weighted design (a divergent step from a poor init) must not
+  ## crash the fit: signal it with NA so the loop bails and reports non-convergence.
+  safe_solve <- function(A, b) tryCatch(as.vector(solve(A, b)),
+                                        error = function(e) rep(NA_real_, ncol(A)))
   ridgeX  <- 1e-8 * diag(p)
   ridge1  <- 1e-8 * diag(p + 1L)
 
-  beta  <- if (!is.null(init) && model %in% c("mean", "mixed"))
-             rep_len(as.numeric(init), p) else rep(0, p)
-  gamma <- rep(0, p)
-  alpha <- 0
+  st    <- .circ_lm_cl_starts(X, model, init)
+  beta  <- st$beta
+  gamma <- st$gamma
+  alpha <- st$alpha
   mu <- 0; kappa <- 1
-  ll_old <- -Inf; diff <- tol + 1; iter <- 0L
+  ll_old <- -Inf; diff <- tol + 1; iter <- 0L; diverged <- FALSE
 
   for (iter in seq_len(maxit)) {
     if (model == "mean") {
@@ -305,52 +391,58 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
       w <- kappa * A1(kappa)
       u <- kappa * sin(rdev - mu)
       GtG <- crossprod(G)
-      beta <- as.vector(solve(w * GtG + ridgeX,
-                              crossprod(G, u) + w * GtG %*% beta))
+      beta <- safe_solve(w * GtG + ridgeX, crossprod(G, u) + w * GtG %*% beta)
       ll <- -n * log_i0(kappa) + kappa * sum(cos(rdev - mu))
 
     } else if (model == "kappa") {
-      kappa <- exp(pmin(pmax(alpha + as.vector(X %*% gamma), -50), 50))
+      kappa <- kappa_of(alpha + as.vector(X %*% gamma))
       mu <- atan2(sum(kappa * sin(theta)), sum(kappa * cos(theta)))
       a1p <- pmax(A1prime(kappa), 1e-12)
       y <- (cos(theta - mu) - A1(kappa)) / (a1p * kappa)
       w <- kappa^2 * a1p
-      upd <- as.vector(solve(crossprod(X1, w * X1) + ridge1, crossprod(X1, w * y)))
+      upd <- safe_solve(crossprod(X1, w * X1) + ridge1, crossprod(X1, w * y))
       alpha <- alpha + upd[1L]; gamma <- gamma + upd[-1L]
       ll <- -sum(log_i0(kappa)) + sum(kappa * cos(theta - mu))
 
     } else {                                    # mixed
-      kappa <- exp(pmin(pmax(alpha + as.vector(X %*% gamma), -50), 50))
+      kappa <- kappa_of(alpha + as.vector(X %*% gamma))
       eta <- as.vector(X %*% beta)
       rdev <- theta - linkinv(eta)
       mu <- atan2(sum(kappa * sin(rdev)), sum(kappa * cos(rdev)))
       G <- mu_eta(eta) * X
       wb <- kappa * A1(kappa)
       GtWG <- crossprod(G, wb * G)
-      beta <- as.vector(solve(GtWG + ridgeX,
-                              crossprod(G, kappa * sin(rdev - mu)) + GtWG %*% beta))
+      beta <- safe_solve(GtWG + ridgeX, crossprod(G, kappa * sin(rdev - mu)) + GtWG %*% beta)
       a1p <- pmax(A1prime(kappa), 1e-12)
       y <- (cos(rdev - mu) - A1(kappa)) / (a1p * kappa)
       wg <- kappa^2 * a1p
-      upd <- as.vector(solve(crossprod(X1, wg * X1) + ridge1, crossprod(X1, wg * y)))
+      upd <- safe_solve(crossprod(X1, wg * X1) + ridge1, crossprod(X1, wg * y))
       alpha <- alpha + upd[1L]; gamma <- gamma + upd[-1L]
       ll <- -sum(log_i0(kappa)) + sum(kappa * cos(rdev - mu))
     }
 
+    if (!is.finite(ll)) { diverged <- TRUE; break }   # singular step / overflow: bail cleanly
     diff <- abs(ll - ll_old)
     if (verbose)
       cat(sprintf("iter %d: logLik = %.6f, diff = %.2e\n", iter, ll, diff))
     if (diff < tol) break
     ll_old <- ll
   }
-  if (diff >= tol)
-    warning(sprintf("circ_lm(type = 'cl') did not converge in %d iterations ",
-                    maxit), sprintf("(last diff = %.2e, tol = %.2e).", diff, tol),
+  converged <- !diverged && is.finite(diff) && diff < tol
+  if (!converged)
+    warning(if (diverged)
+              "circ_lm(type = 'cl') diverged before converging; try init = NULL (cold) or other starts."
+            else sprintf("circ_lm(type = 'cl') did not converge in %d iterations (last diff = %.2e, tol = %.2e).",
+                         maxit, diff, tol),
             call. = FALSE)
 
-  se <- .circ_lm_cl_se(theta, X, model, beta, alpha, gamma, kappa, mu)
+  se <- tryCatch(.circ_lm_cl_se(theta, X, model, beta, alpha, gamma, kappa, mu),
+                 error = function(e)
+                   list(se_beta = rep(NA_real_, length(beta)), se_gamma = rep(NA_real_, length(gamma)),
+                        se_alpha = NA_real_, se_mu = NA_real_, se_kappa = NA_real_,
+                        Vbeta = NULL, Vag = NULL))
   list(mu = mu, kappa = kappa, beta = beta, alpha = alpha, gamma = gamma,
-       loglik = ll, iter = iter, converged = diff < tol,
+       loglik = ll, iter = iter, converged = converged,
        se_beta = se$se_beta, se_gamma = se$se_gamma, se_alpha = se$se_alpha,
        se_mu = se$se_mu, se_kappa = se$se_kappa, Vbeta = se$Vbeta, Vag = se$Vag)
 }

@@ -44,6 +44,24 @@ test_that("cl guards: nothing to regress, and mixed needs a shared design", {
   expect_error(circ_lm(list(theta ~ x, ~ x, ~ x), d, type = "cl"), "at most two")
 })
 
+test_that("cl init resolves cold / named list / legacy numeric, with guards", {
+  X <- matrix(c(1, 2, 3, 4), ncol = 1L)        # p = 1
+  st <- function(model, init) circlss:::.circ_lm_cl_starts(X, model, init)
+
+  expect_equal(st("mixed", NULL), list(beta = 0, gamma = 0, alpha = 0))   # cold default
+
+  s <- st("mixed", list(beta = 0.5, alpha = 1.2, gamma = -0.3))           # explicit starts
+  expect_equal(c(s$beta, s$gamma, s$alpha), c(0.5, -0.3, 1.2))
+  expect_equal(st("mixed", list(gamma = 0.4))$beta, 0)                    # omitted -> cold
+  expect_equal(st("mean", 0.7)$beta, 0.7)                                 # legacy numeric -> beta
+
+  expect_error(st("mixed", list(beta = c(1, 2))), "length 1")             # length guards
+  expect_error(st("mixed", list(alpha = c(1, 2))), "single number")
+  expect_warning(st("mean", list(gamma = 0.1)), "unused")                 # misuse warnings
+  expect_warning(st("kappa", list(beta = 0.1)), "unused")
+  expect_warning(st("mixed", list(bad = 1)), "unknown init component")
+})
+
 test_that(".circ_lm_harmonic builds the cos/sin basis at the requested order", {
   x <- c(0, pi / 2, pi)
   H <- circlss:::.circ_lm_harmonic(x, 2L)

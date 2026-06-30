@@ -50,8 +50,14 @@ spellings (\code{"c-l"}, \code{"c-c"}, \code{"l-c"}) are accepted. For
 \code{"lc"} (number of harmonics of the angular predictor). Ignored for
 \code{"cl"}.}
 
-\item{init}{Optional starting values for the mean-direction coefficients
-(\code{"cl"} only); defaults to zero.}
+\item{init}{Starting values for the \code{"cl"} iteration. \code{NULL}
+(default) starts cold: all coefficients zero, so \eqn{\kappa \equiv 1}. A
+named list \code{list(beta=, alpha=, gamma=)} sets explicit starts -- any
+component omitted falls back to its cold value; \code{beta} and \code{gamma}
+take one value per covariate, \code{alpha} a single number. This lets you seed
+the joint (mixed) fit with estimates from separately fitted mean-only and
+kappa-only models, as Fisher (1993, Sec. 6.4.4) suggests. A bare numeric
+vector is taken, as before, as the mean-direction coefficients (\code{beta}).}
 
 \item{tol, maxit, verbose}{IRLS convergence tolerance, iteration cap, and
 per-iteration logging (\code{"cl"} only).}
@@ -105,7 +111,12 @@ to that property); likewise the \code{cc} harmonic model recovers its mean by
 constant \eqn{\kappa}; \code{list(theta ~ 1, ~ z)} models
 \eqn{\log\kappa = \alpha + z^\top\gamma} with constant \eqn{\mu};
 \code{list(theta ~ x, ~ x)} is the mixed model. The mixed model ties
-\eqn{\mu} and \eqn{\kappa} to one shared design.
+\eqn{\mu} and \eqn{\kappa} to one shared design. Any of these may carry several
+covariates (\code{theta ~ x + z}); only \code{cc}/\code{lc} are single-predictor.
+The mixed iteration starts cold (\eqn{\kappa \equiv 1}) by default; pass
+\code{init = list(beta=, alpha=, gamma=)} to seed it from your own starting
+values -- e.g. the estimates of separately fitted mean-only and kappa-only
+models, the two-stage start Fisher (1993) Sec. 6.4.4 describes.
 
 \strong{cc -- circular on circular.} The Sarma and Jammalamadaka (1993) harmonic
 fit: \code{cos(theta)} and \code{sin(theta)} regressed by least squares on a
@@ -141,6 +152,16 @@ predict(m, data.frame(x = c(-1, 0, 1)))
 
 ## cl: mixed model -- mean and log-kappa both linear in x
 circ_lm(list(theta ~ x, ~ x), dat, type = "cl")
+
+## cl: seed the mixed fit from separately fitted mean-only / kappa-only models
+b0 <- circ_lm(theta ~ x, dat, type = "cl")
+k0 <- circ_lm(list(theta ~ 1, ~ x), dat, type = "cl")
+circ_lm(list(theta ~ x, ~ x), dat, type = "cl",
+        init = list(beta = b0$beta, alpha = k0$alpha, gamma = k0$gamma))
+
+## cl: several covariates (mean and concentration share the design)
+dat$z <- rnorm(n)
+circ_lm(list(theta ~ x + z, ~ x + z), dat, type = "cl")
 
 ## cc / lc: harmonic fits on an angular predictor
 phi <- runif(n, 0, 2 * pi)
