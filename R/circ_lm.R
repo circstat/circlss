@@ -32,6 +32,14 @@
 #'   vector is taken, as before, as the mean-direction coefficients (\code{beta}).
 #' @param tol,maxit,verbose IRLS convergence tolerance, iteration cap, and
 #'   per-iteration logging (\code{"cl"} only).
+#' @param se How standard errors are computed (\code{"cl"} only).
+#'   \code{"asymptotic"} (default) uses the expected-information formulae;
+#'   \code{"bootstrap"} replaces them with a parametric bootstrap -- simulate from
+#'   the fitted vM(\eqn{\mu_i, \kappa_i}), refit, and take the spread of the
+#'   estimates -- which Fisher (1993, Sec. 8.4) recommends below \eqn{n \approx 25}
+#'   -- \eqn{30}, where the asymptotic SEs are unreliable. Stochastic, so set a
+#'   seed for reproducibility.
+#' @param R Number of bootstrap resamples when \code{se = "bootstrap"}.
 #' @param object,x A fitted \code{circ_lm} model.
 #' @param newdata A data frame of new predictor values. For \code{predict},
 #'   omitting it returns the fitted values.
@@ -121,6 +129,10 @@
 #' ## cl: mixed model -- mean and log-kappa both linear in x
 #' circ_lm(list(theta ~ x, ~ x), dat, type = "cl")
 #'
+#' ## cl: bootstrap SEs (Fisher 1993 Sec. 8.4) -- preferred at small n
+#' set.seed(1)
+#' circ_lm(theta ~ x, dat, type = "cl", se = "bootstrap", R = 199)
+#'
 #' ## cl: seed the mixed fit from separately fitted mean-only / kappa-only models
 #' b0 <- circ_lm(theta ~ x, dat, type = "cl")
 #' k0 <- circ_lm(list(theta ~ 1, ~ x), dat, type = "cl")
@@ -140,11 +152,16 @@
 #' circ_lm(y ~ phi, dlc, type = "lc", order = 1)
 #' @export
 circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
-                    order = 1L, init = NULL, tol = 1e-8, maxit = 100L,
+                    order = 1L, init = NULL, tol = 1e-8, maxit = 1000L,
+                    se = c("asymptotic", "bootstrap"), R = 999L,
                     verbose = FALSE) {
   if (missing(data))
     stop("circ_lm() requires 'data'.", call. = FALSE)
   type <- .circ_lm_type(type)
+  se <- match.arg(se)
+  if (se == "bootstrap" && type != "cl")
+    stop("se = 'bootstrap' is implemented for type = 'cl' only; ",
+         "cc/lc report least-squares standard errors.", call. = FALSE)
 
   flist <- if (inherits(formula, "formula")) list(formula) else formula
   if (!is.list(flist) || !length(flist) ||
@@ -154,7 +171,7 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
   .circ_lm_no_smooth(flist)
 
   fit <- switch(type,
-    cl = .circ_lm_cl(flist, data, init, tol, as.integer(maxit), verbose),
+    cl = .circ_lm_cl(flist, data, init, tol, as.integer(maxit), verbose, se, as.integer(R)),
     cc = .circ_lm_cc(flist, data, as.integer(order)),
     lc = .circ_lm_lc(flist, data, as.integer(order)))
   fit$type <- type
@@ -237,7 +254,8 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
 ## cl -- Fisher-Lee von Mises regression (mean / kappa / mixed)
 ## ===========================================================================
 
-.circ_lm_cl <- function(flist, data, init, tol, maxit, verbose) {
+.circ_lm_cl <- function(flist, data, init, tol, maxit, verbose,
+                        se = "asymptotic", R = 999L) {
   if (length(flist) > 2L)
     stop("circ_lm(type = 'cl') takes at most two formulas: ",
          "list(mu ~ ..., logkappa ~ ...).", call. = FALSE)
@@ -292,6 +310,12 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
   frame <- data[, keep, drop = FALSE]
   frame[[fit$response]] <- theta
   fit$frame <- frame
+
+  fit$se_method <- se
+  if (se == "bootstrap") {
+    bse <- .circ_lm_cl_boot(fit, X, model, tol, maxit, R)
+    for (.nm in names(bse)) fit[[.nm]] <- bse[[.nm]]   # override se_*/V* with bootstrap, add nboot
+  }
   fit
 }
 
@@ -479,6 +503,82 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
     out$se_mu <- 1 / sqrt(max(sum(kappa * A1(kappa)) - 0.5, 1e-12))
     quad <- rowSums((X1 %*% cov_ag) * X1)
     out$se_kappa <- kappa * sqrt(pmax(quad, 0))
+  }
+  out
+}
+
+## Parametric bootstrap SEs (Fisher 1993, sec 8.4), the small-sample alternative
+## to the expected-information SEs above: simulate responses from the fitted
+## vM(mu_i, kappa_i), refit, and take the spread of the bootstrap estimates.
+## Refits warm-start from the point estimate (the resample sits near it) so they
+## converge fast; non-converged draws are dropped. Reproducibility is the caller's
+## set.seed(). Returns the same se_*/V* fields the asymptotic path fills, by model.
+.circ_lm_cl_boot <- function(fit, X, model, tol, maxit, R) {
+  mu_i <- fit$fitted
+  k_i  <- if (length(fit$kappa) == 1L) rep_len(fit$kappa, length(mu_i)) else fit$kappa
+  p <- ncol(X)
+  start <- switch(model,
+    mean  = list(beta = fit$beta),
+    kappa = list(alpha = fit$alpha, gamma = fit$gamma),
+    mixed = list(beta = fit$beta, alpha = fit$alpha, gamma = fit$gamma))
+  ## refits need only SE-grade precision, and the mixed IRLS converges slowly
+  ## (kappa-leverage ill-conditioning), so loosen tol and lift the iteration cap
+  ## off the user's point-fit defaults -- otherwise slow resamples hit maxit, get
+  ## dropped, and the survivors bias the SE downward.
+  boot_tol <- max(tol, 1e-6); boot_maxit <- max(maxit, 1000L)
+  reps <- vector("list", R)
+  for (b in seq_len(R)) {
+    yb <- .circ_rvonmises(mu_i, k_i) %% (2 * pi)
+    fb <- tryCatch(suppressWarnings(.circ_lm_cl_fit(yb, X, model, start, boot_tol, boot_maxit, FALSE)),
+                   error = function(e) NULL)
+    if (!is.null(fb) && isTRUE(fb$converged)) reps[[b]] <- fb
+  }
+  reps <- reps[!vapply(reps, is.null, logical(1))]
+  nb <- length(reps)
+  if (nb < 2L)
+    stop("se = 'bootstrap': only ", nb, " of ", R, " resamples converged; ",
+         "use se = 'asymptotic'.", call. = FALSE)
+  if (nb < R %/% 2L)
+    warning(sprintf("se = 'bootstrap': only %d of %d resamples converged.", nb, R),
+            call. = FALSE)
+
+  col <- function(nm) vapply(reps, `[[`, numeric(1), nm)                    # scalar per rep
+  mat <- function(nm) do.call(rbind, lapply(reps, `[[`, nm))               # nb x p (robust at p = 1)
+  Mu  <- col("mu")
+  out <- list(nboot = nb,
+              se_mu = stats::sd(atan2(sin(Mu - fit$mu), cos(Mu - fit$mu))))  # circular SE of mu
+  if (model %in% c("mean", "mixed")) {
+    Beta <- mat("beta")
+    out$se_beta <- apply(Beta, 2L, stats::sd); out$Vbeta <- stats::cov(Beta)
+  }
+  if (model %in% c("kappa", "mixed")) {
+    Alpha <- col("alpha"); Gamma <- mat("gamma")
+    out$se_alpha <- stats::sd(Alpha); out$se_gamma <- apply(Gamma, 2L, stats::sd)
+    out$Vag <- stats::cov(cbind(Alpha, Gamma))
+    Kmat <- exp(sweep(Gamma %*% t(X), 1L, Alpha, "+"))   # nb x n: per-observation kappa
+    out$se_kappa <- apply(Kmat, 2L, stats::sd)
+  } else {
+    out$se_kappa <- stats::sd(col("kappa"))              # mean model: one kappa
+  }
+  out
+}
+
+## Best (1979) / Fisher rejection sampler for the von Mises, vectorised over
+## (mu, kappa) by recycling; one draw per element. kappa ~ 0 gives a uniform angle.
+.circ_rvonmises <- function(mu, kappa) {
+  n <- max(length(mu), length(kappa))
+  mu <- rep_len(mu, n); kappa <- rep_len(kappa, n)
+  out <- numeric(n)
+  for (i in seq_len(n)) {
+    k <- kappa[i]
+    if (k < 1e-8) { out[i] <- runif(1, -pi, pi) + mu[i]; next }
+    a <- 1 + sqrt(1 + 4 * k * k); b <- (a - sqrt(2 * a)) / (2 * k); r <- (1 + b * b) / (2 * b)
+    repeat {
+      z <- cos(pi * runif(1)); f <- (1 + r * z) / (r + z); cc <- k * (r - f); u <- runif(1)
+      if (cc * (2 - cc) - u > 0 || log(cc / u) + 1 - cc >= 0) {
+        out[i] <- sign(runif(1) - 0.5) * acos(max(min(f, 1), -1)) + mu[i]; break
+      }
+    }
   }
   out
 }
@@ -679,6 +779,8 @@ print.circ_lm <- function(x, digits = max(3L, getOption("digits") - 3L), ...) {
               format(x$loglik, digits = digits), format(x$aic, digits = digits),
               format(x$bic, digits = digits), x$n))
   if (!isTRUE(x$converged)) cat("** did not converge **\n")
+  if (identical(x$se_method, "bootstrap"))
+    cat(sprintf("SEs: parametric bootstrap, %d resamples.   ", x$nboot))
   cat("p-values use the normal approximation.\n")
 }
 

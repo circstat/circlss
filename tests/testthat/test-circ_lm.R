@@ -62,6 +62,13 @@ test_that("cl init resolves cold / named list / legacy numeric, with guards", {
   expect_warning(st("mixed", list(bad = 1)), "unknown init component")
 })
 
+test_that("se argument is validated, and bootstrap is cl-only", {
+  d <- data.frame(y = c(0.1, 1, 2, 3), x = c(0, 1, 2, 3))
+  expect_error(circ_lm(y ~ x, d, type = "cl", se = "nope"), "should be one of")
+  expect_error(circ_lm(y ~ x, d, type = "cc", se = "bootstrap"), "type = 'cl' only")
+  expect_error(circ_lm(y ~ x, d, type = "lc", se = "bootstrap"), "type = 'cl' only")
+})
+
 test_that(".circ_lm_harmonic builds the cos/sin basis at the requested order", {
   x <- c(0, pi / 2, pi)
   H <- circlss:::.circ_lm_harmonic(x, 2L)

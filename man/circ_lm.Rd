@@ -17,7 +17,9 @@ circ_lm(
   order = 1L,
   init = NULL,
   tol = 1e-08,
-  maxit = 100L,
+  maxit = 1000L,
+  se = c("asymptotic", "bootstrap"),
+  R = 999L,
   verbose = FALSE
 )
 
@@ -61,6 +63,16 @@ vector is taken, as before, as the mean-direction coefficients (\code{beta}).}
 
 \item{tol, maxit, verbose}{IRLS convergence tolerance, iteration cap, and
 per-iteration logging (\code{"cl"} only).}
+
+\item{se}{How standard errors are computed (\code{"cl"} only).
+\code{"asymptotic"} (default) uses the expected-information formulae;
+\code{"bootstrap"} replaces them with a parametric bootstrap -- simulate from
+the fitted vM(\eqn{\mu_i, \kappa_i}), refit, and take the spread of the
+estimates -- which Fisher (1993, Sec. 8.4) recommends below \eqn{n \approx 25}
+-- \eqn{30}, where the asymptotic SEs are unreliable. Stochastic, so set a
+seed for reproducibility.}
+
+\item{R}{Number of bootstrap resamples when \code{se = "bootstrap"}.}
 
 \item{object, x}{A fitted \code{circ_lm} model.}
 
@@ -152,6 +164,10 @@ predict(m, data.frame(x = c(-1, 0, 1)))
 
 ## cl: mixed model -- mean and log-kappa both linear in x
 circ_lm(list(theta ~ x, ~ x), dat, type = "cl")
+
+## cl: bootstrap SEs (Fisher 1993 Sec. 8.4) -- preferred at small n
+set.seed(1)
+circ_lm(theta ~ x, dat, type = "cl", se = "bootstrap", R = 199)
 
 ## cl: seed the mixed fit from separately fitted mean-only / kappa-only models
 b0 <- circ_lm(theta ~ x, dat, type = "cl")
