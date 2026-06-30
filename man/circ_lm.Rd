@@ -148,7 +148,12 @@ differ slightly: it is the only quantity passing through the inverse Bessel
 ratio, and circlss returns the machine-precision inverse (the exact
 \eqn{\kappa} solving \eqn{A_1(\kappa) = R}) where \code{circular} uses the
 classical piecewise approximation -- a gap at that approximation's error level
-(~1e-3), largest at high concentration.
+(~1e-3), largest at high concentration. One deliberate departure: the reported
+\code{logLik} (and \code{aic}/\code{bic}) is the \emph{full} von Mises
+log-likelihood with every estimated parameter counted (\eqn{\mu_0} and
+\eqn{\kappa} included), so it exceeds \code{lm.circular}'s printed \code{log.lik}
+by the \eqn{n\log 2\pi} normalisation \code{circular} drops -- putting circlss's
+AIC on the standard scale, comparable to \code{\link{circ_gam}} or a \code{glm}.
 }
 \examples{
 set.seed(1)

@@ -69,6 +69,18 @@ test_that("se argument is validated, and bootstrap is cl-only", {
   expect_error(circ_lm(y ~ x, d, type = "lc", se = "bootstrap"), "type = 'cl' only")
 })
 
+test_that("cl npar counts every estimated parameter (mu0/mu, kappa included)", {
+  np <- circlss:::.circ_lm_cl_npar
+  # one covariate: mean (mu0, beta, kappa)=3; kappa (mu, alpha, gamma)=3; mixed=4
+  expect_identical(np("mean", 1L), 3L)
+  expect_identical(np("kappa", 1L), 3L)
+  expect_identical(np("mixed", 1L), 4L)
+  # two covariates: mean/kappa gain one slope each; mixed gains two
+  expect_identical(np("mean", 2L), 4L)
+  expect_identical(np("kappa", 2L), 4L)
+  expect_identical(np("mixed", 2L), 6L)
+})
+
 test_that(".circ_lm_harmonic builds the cos/sin basis at the requested order", {
   x <- c(0, pi / 2, pi)
   H <- circlss:::.circ_lm_harmonic(x, 2L)

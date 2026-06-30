@@ -98,7 +98,12 @@
 #' ratio, and circlss returns the machine-precision inverse (the exact
 #' \eqn{\kappa} solving \eqn{A_1(\kappa) = R}) where \code{circular} uses the
 #' classical piecewise approximation -- a gap at that approximation's error level
-#' (~1e-3), largest at high concentration.
+#' (~1e-3), largest at high concentration. One deliberate departure: the reported
+#' \code{logLik} (and \code{aic}/\code{bic}) is the \emph{full} von Mises
+#' log-likelihood with every estimated parameter counted (\eqn{\mu_0} and
+#' \eqn{\kappa} included), so it exceeds \code{lm.circular}'s printed \code{log.lik}
+#' by the \eqn{n\log 2\pi} normalisation \code{circular} drops -- putting circlss's
+#' AIC on the standard scale, comparable to \code{\link{circ_gam}} or a \code{glm}.
 #' @references
 #' Fisher, N. I. and Lee, A. J. (1992) Regression models for an angular response.
 #' \emph{Biometrics} 48, 665-677.
@@ -254,6 +259,13 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
 ## cl -- Fisher-Lee von Mises regression (mean / kappa / mixed)
 ## ===========================================================================
 
+## Free-parameter count for AIC/BIC: every estimated parameter, not just the
+## regression slopes -- mean has (mu0, beta_1..p, kappa); kappa has (mu, alpha,
+## gamma_1..p); mixed has (mu0, beta_1..p, alpha, gamma_1..p). Standard AIC, so it
+## matches a circ_gam()/glm coefficient count (lm.circular reports no AIC).
+.circ_lm_cl_npar <- function(model, p)
+  switch(model, mean = p + 2L, kappa = p + 2L, mixed = 2L * p + 2L)
+
 .circ_lm_cl <- function(flist, data, init, tol, maxit, verbose,
                         se = "asymptotic", R = 999L) {
   if (length(flist) > 2L)
@@ -289,8 +301,7 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
   X <- if (model == "kappa") Xka else Xmu       # shared design (mean/mixed use Xmu)
   fit <- .circ_lm_cl_fit(theta, X, model, init, tol, maxit, verbose)
 
-  npar <- switch(model, mean = ncol(X), kappa = 1L + ncol(X),
-                 mixed = 1L + 2L * ncol(X))
+  npar <- .circ_lm_cl_npar(model, ncol(X))
   fit$n <- length(theta)
   fit$npar <- npar
   fit$aic <- -2 * fit$loglik + 2 * npar
@@ -460,6 +471,9 @@ circ_lm <- function(formula, data, type = c("cl", "cc", "lc"),
                          maxit, diff, tol),
             call. = FALSE)
 
+  ll <- ll - n * log(2 * pi)   # the proper vM normalisation; the loop dropped this
+                               # constant (as lm.circular does), restore it so logLik
+                               # is a real log-likelihood and AIC/BIC are comparable.
   se <- tryCatch(.circ_lm_cl_se(theta, X, model, beta, alpha, gamma, kappa, mu),
                  error = function(e)
                    list(se_beta = rep(NA_real_, length(beta)), se_gamma = rep(NA_real_, length(gamma)),
