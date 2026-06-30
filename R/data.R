@@ -66,3 +66,41 @@
 #'   data = level, family = vmlss(), knots = list(wind = c(-pi, pi))
 #' )
 "songbirds"
+
+#' Wind direction at a South African wind farm (ten-minute records)
+#'
+#' Wind measurements recorded every ten minutes at a wind farm in the Eastern Cape, South
+#' Africa, throughout January 2019. The circular response -- wind direction -- is strongly
+#' \strong{bimodal}, with an easterly and a westerly regime (a sea-breeze / land-breeze
+#' signature whose mix shifts with time of day and wind speed), which makes it a natural
+#' showcase for a \emph{mixture} of circular regressions (\code{\link{circ_mix}}) and for
+#' the smooth cylinder/torus geometry of \code{\link{circ_gam}}. This is the raw series of
+#' Skhosana & Nakhaei Rad (2026); they aggregate it to hourly means before fitting, which
+#' you can reproduce with \code{aggregate()} on the hour of \code{ts} (circular mean of
+#' \code{wd}, arithmetic mean of the rest).
+#'
+#' @format A data frame with 4464 rows and 6 columns:
+#' \describe{
+#'   \item{ts}{Timestamp of the measurement, a \code{POSIXct} (UTC), in 10-minute steps.}
+#'   \item{wd}{Wind direction, the circular response, in radians on \eqn{[0, 2\pi)}
+#'     (compass bearing the wind blew \emph{from}; \eqn{\pi/2} = E, \eqn{3\pi/2} = W).}
+#'   \item{ws}{Wind speed, in m/s.}
+#'   \item{tair}{Air temperature, in degrees Celsius.}
+#'   \item{rh}{Relative humidity, in percent.}
+#'   \item{tod}{Time of day, in radians on \eqn{[0, 2\pi)} (the diurnal circular
+#'     covariate; \code{tod = 0} at midnight, \eqn{\pi} at noon).}
+#' }
+#' @source The authors' repository \url{https://github.com/Sphiwe-Skhosana/MixCircReg}
+#'   (\code{wind_data.csv}), accompanying Skhosana & Nakhaei Rad (2026).
+#' @references
+#' Skhosana, S. & Nakhaei Rad, N. (2026) Model-based clustering using a new mixture of
+#' circular regressions. \emph{arXiv:2601.05345}.
+#' @examples
+#' ## Smooth von Mises GAMs (the geometry the wind showcase draws):
+#' ## a cylinder -- direction vs wind speed (circular ~ linear)
+#' circ_gam(wd ~ s(ws), data = windfarm, family = vmlss())
+#'
+#' ## a torus -- direction vs time of day (circular ~ circular)
+#' circ_gam(wd ~ s(tod, bs = "cc"), data = windfarm, family = vmlss(),
+#'          knots = list(tod = c(0, 2 * pi)))
+"windfarm"
