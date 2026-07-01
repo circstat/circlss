@@ -412,8 +412,36 @@ circ_mix <- function(formula, data, family = vmlss(),
 #'   \code{penalty = "fixed"}; \code{NULL} (default) selects them automatically.
 #' @param sp_every Under \code{penalty = "scheduled"}, the number of EM iterations
 #'   between REML re-selections of the smoothing parameters (held fixed in between).
-#' @param start,kappa_cap Accepted but not yet used (kappa_cap is reserved for
-#'   concentration capping).
+#' @param degen_strength Strength \eqn{c} of the size-aware degeneracy guard, in
+#'   diffuse pseudo-observations per component (default \code{1}; \code{0} turns the
+#'   guard off, recovering the unguarded EM). A finite mixture's likelihood is
+#'   unbounded -- a component can raise it without limit by concentrating onto a
+#'   responsibility-weighted subset (its concentration \eqn{\kappa \to \infty}, or a
+#'   bounded shape / peakedness parameter driven to its singular boundary, where the
+#'   Hessian blows up and the M-step crashes or grinds). The guard adds to each
+#'   component's weighted M-step a MAP penalty pulling its concentration / shape
+#'   toward the family's diffuse (reduced) model with strength \eqn{\lambda_k = c /
+#'   N_k}, where \eqn{N_k = \sum_i \gamma_{ik}} is the effective component size: it is
+#'   worth about \eqn{c} diffuse observations, so it \strong{vanishes for a
+#'   well-populated component} (the data dominate and the smooths fit normally under
+#'   REML) and bites only as a component collapses onto a thin subset. One penalty
+#'   handles all three failure modes (soft \eqn{\kappa \to \infty}, the boundary
+#'   crash, the near-singular-grind hang); it is the every-family generalisation of
+#'   capping the concentration. The penalty regularises the concentration / shape
+#'   \emph{level} only and is orthogonal to the REML smooth penalty (which controls
+#'   wiggliness), so \code{penalty = "auto"} is unaffected; it never alters the
+#'   per-observation density used by the E-step, so the reported mixture
+#'   log-likelihood and BIC stay on the data scale. Used by every circular family;
+#'   inert for the linear-response legs (\code{\link{gausslss}}, \code{\link{gammalss}}).
+#' @param time_budget Optional per-restart wall-clock budget in seconds
+#'   (\code{NULL}, the default, turns it off). A backstop behind \code{degen_strength}:
+#'   an EM run exceeding it is aborted and treated exactly like a failed restart
+#'   (skipped; only an all-restarts-failed run errors), so no single fit can hang. The
+#'   degeneracy guard is the real fix; this only guarantees a bounded running time.
+#' @param start Accepted but not yet used.
+#' @param kappa_cap Deprecated and ignored -- subsumed by \code{degen_strength} (the
+#'   soft, size-aware, every-family generalisation of concentration capping). Passing
+#'   a finite value warns; it will be removed in a future release.
 #' @export
 circ_mix.control <- function(lambda = NULL,
                              kmin = 1L, kmax = 20L,
@@ -423,7 +451,8 @@ circ_mix.control <- function(lambda = NULL,
                              restarts = 10L, init = "kmeans",
                              moves = c("split", "merge", "death"),
                              tol = 1e-6, max_iter = 200L,
-                             min_size = 5L, kappa_cap = Inf,
+                             min_size = 5L, degen_strength = 1,
+                             time_budget = NULL, kappa_cap = Inf,
                              wfloor = 1e-8, seed = NULL, cores = 1L,
                              verbose = FALSE) {
   init <- match.arg(init, c("kmeans", "random", "emEM"))
@@ -433,12 +462,25 @@ circ_mix.control <- function(lambda = NULL,
   if (!is.character(optimizer) || !length(optimizer))
     stop("optimizer must be an mgcv outer-optimiser string, e.g. \"efs\" or \"outer\".")
   moves <- match.arg(moves, c("split", "merge", "death", "birth"), several.ok = TRUE)
+  if (!is.numeric(degen_strength) || length(degen_strength) != 1L ||
+      is.na(degen_strength) || degen_strength < 0)
+    stop("degen_strength must be a single non-negative number (0 turns the guard off).")
+  if (!is.null(time_budget) && (!is.numeric(time_budget) || length(time_budget) != 1L ||
+      is.na(time_budget) || time_budget <= 0))
+    stop("time_budget must be NULL (off) or a single positive number of seconds.")
+  ## kappa_cap is deprecated -- subsumed by degen_strength (the soft, size-aware,
+  ## every-family generalization of "cap the concentration"). Accepted one cycle.
+  if (is.finite(kappa_cap))
+    warning("circ_mix.control: 'kappa_cap' is deprecated and ignored; use ",
+            "'degen_strength' (the size-aware MAP degeneracy guard).", call. = FALSE)
   list(lambda = lambda, kmin = as.integer(kmin), kmax = as.integer(kmax),
        penalty = penalty, sp = sp, optimizer = optimizer, start = start,
        sp_every = max(1L, as.integer(sp_every)),
        restarts = as.integer(restarts), init = init, moves = moves,
        tol = tol, max_iter = as.integer(max_iter),
-       min_size = as.integer(min_size), kappa_cap = kappa_cap,
+       min_size = as.integer(min_size), degen_strength = as.numeric(degen_strength),
+       time_budget = if (is.null(time_budget)) NULL else as.numeric(time_budget),
+       kappa_cap = kappa_cap,
        wfloor = wfloor, seed = seed, cores = max(1L, as.integer(cores)),
        verbose = isTRUE(verbose))
 }
@@ -867,7 +909,17 @@ circ_mix.control <- function(lambda = NULL,
   pi <- colMeans(g)
   prev <- -Inf; ll_path <- numeric(0); conv <- FALSE
   parametric <- NA; worst_drop <- 0; ll <- NA_real_; prev_z <- NULL
+  best_ll <- -Inf; stall <- 0L                       # stall-abort tracker (below)
+  ## per-restart wall-clock backstop (defense-in-depth behind the degeneracy
+  ## penalty): a degenerate near-singular M-step grind is caught and the restart
+  ## is treated exactly like a failed one (the caller's tryCatch skips it). NULL
+  ## (default) = off; the penalty is the real fix, this only guarantees no hang.
+  t_start <- Sys.time()
   for (iter in seq_len(control$max_iter)) {
+    if (!is.null(control$time_budget) &&
+        as.numeric(Sys.time() - t_start, units = "secs") > control$time_budget)
+      stop("circ_mix: an EM run exceeded time_budget (", control$time_budget,
+           "s) at iter ", iter, "; restart aborted.")
     reselect <- switch(penalty, auto = TRUE, fixed = FALSE,
                        scheduled = (iter > 1L && iter %% sp_every == 0L))
     ## M-step: weighted component refits + mixing weights, each warm-started from
@@ -878,8 +930,21 @@ circ_mix.control <- function(lambda = NULL,
     ## either re-selected by REML (sp = NULL) or held at sp_k[[k]] this iteration.
     pi <- colMeans(g)
     for (k in seq_len(K)) {
+      ## size-aware MAP degeneracy guard: pull this component's concentration /
+      ## shape toward the diffuse model with strength lambda_k = c / N_k, N_k the
+      ## effective component size (sum of the M-step weights). Vanishes for a
+      ## well-populated component, bites only as one collapses onto a thin subset.
+      ## Set on a per-component family copy (inert unless the family declares a
+      ## `degen` spec and c > 0); ret$l0 is unpenalized, so the E-step is unchanged.
+      wk    <- pmax(g[grp, k], control$wfloor)
+      fam_k <- family
+      cc    <- if (is.null(control$degen_strength)) 0 else control$degen_strength
+      if (cc > 0 && !is.null(family$degen)) {
+        Nk <- sum(wk)
+        fam_k$map_lambda <- if (Nk > 0) cc / Nk else NULL
+      }
       components[[k]] <- .circ_mix_fit_component(
-        formula, data, family, weights = pmax(g[grp, k], control$wfloor),
+        formula, data, fam_k, weights = wk,
         start = start_k[[k]], sp = if (reselect) NULL else sp_k[[k]],
         optimizer = if (reselect) opt else NULL,
         warm = if (reselect) warm_k[[k]] else NULL, ...)
@@ -914,6 +979,18 @@ circ_mix.control <- function(lambda = NULL,
         conv <- TRUE; break
       }
       if (hard && identical(z, prev_z)) { conv <- TRUE; break }  # CEM: partition stable
+    }
+    ## stall-abort: a quadrature family (jplss, ...) whose log-likelihood wobbles at
+    ## its numerical noise floor can keep changing by just over `tol` forever and
+    ## never trip the test above, grinding to max_iter. If no NEW BEST appears for
+    ## `K_stall` consecutive iterations the run has effectively converged (it is
+    ## oscillating around an optimum, not climbing), so stop and keep it -- a
+    ## data-size-independent guard, unlike a wall-clock cap. K_stall is generous so a
+    ## slow-but-still-improving fit (a new best each iter) is never cut short.
+    if (!is.finite(best_ll) || ll > best_ll + control$tol * (abs(best_ll) + control$tol)) {
+      best_ll <- ll; stall <- 0L
+    } else if ((stall <- stall + 1L) >= 12L) {
+      conv <- TRUE; break
     }
     prev <- ll; if (hard) prev_z <- z
   }

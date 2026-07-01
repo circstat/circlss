@@ -200,12 +200,18 @@ vmftlss <- function(link = list("tanhalf", "log", "tanh")) {
     ts <- .vmft_terms(y, mu, kappa, nu, deriv = deriv > 0)
     l0 <- ts$l0
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; inert otherwise):
+    ## kappa toward 0 (linear) and the peakedness nu off its +/-1 wall (boundary).
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(mu, kappa, nu), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       ## l1 columns (mu, kappa, nu) and l2 columns (mm, mk, mn, kk, kn, nn) come
       ## straight from .vmft_terms in mgcv's combinations_with_replacement order
       l1 <- ts$l1
       l2 <- ts$l2
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta0),
                    family$linfo[[2]]$mu.eta(eta1),
                    family$linfo[[3]]$mu.eta(eta2))
@@ -322,6 +328,7 @@ vmftlss <- function(link = list("tanhalf", "log", "tanh")) {
   structure(list(family = "vmftlss", ll = ll, link = paste(link), nlp = 3,
                  param_names = c("mu", "kappa", "nu"),
                  param_circular = c(TRUE, FALSE, FALSE),
+                 degen = list(.degen_linear(2L), .degen_boundary_sym(3L, 1)),
                  sandwich = sandwich, tri = mgcv::trind.generator(3),
                  initialize = initialize, postproc = postproc,
                  residuals = residuals, linfo = stats, rd = rd,

@@ -215,6 +215,11 @@ jplss <- function(link = list("tanhalf", "log", "identity")) {
     unif <- kappa < .JP_KAPPA_TOL
     if (any(unif)) l0[unif] <- -log(2 * pi)
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; inert otherwise):
+    ## kappa toward 0 (linear) and the shape psi toward 0 = von Mises (ridge).
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(mu, kappa, psi), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       ## l1: d l / d(mu, kappa, psi); the derivatives use the quadrature
@@ -223,6 +228,7 @@ jplss <- function(link = list("tanhalf", "log", "identity")) {
       ## l2 columns ordered (mm, mk, mp, kk, kp, pp) = upper triangle, row-major
       l2 <- cbind(ts$hphiphi, -ts$hphik, -ts$hphip,
                   ts$hkk - Q[, 4], ts$hkp - Q[, 5], ts$hpp - Q[, 6])
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta0),
                    family$linfo[[2]]$mu.eta(eta1),
                    family$linfo[[3]]$mu.eta(eta2))
@@ -339,6 +345,14 @@ jplss <- function(link = list("tanhalf", "log", "identity")) {
   structure(list(family = "jplss", ll = ll, link = paste(link), nlp = 3,
                  param_names = c("mu", "kappa", "psi"),
                  param_circular = c(TRUE, FALSE, FALSE),
+                 ## a firmer prior (scale > 1) on the Jones-Pewsey shape psi keeps
+                 ## it in the range where the normalizer quadrature stays fast and
+                 ## non-singular, so c = 1 holds as the default. kappa stays at the
+                 ## default scale: a stronger pull would zero out a diffuse
+                 ## component (kappa -> 0, where the quadrature is slowest), and the
+                 ## size-aware lambda already caps the concentration. Standalone fits
+                 ## are unaffected (the penalty is inert without circ_mix's map_lambda).
+                 degen = list(.degen_linear(2L), .degen_ridge(3L, 30)),
                  sandwich = sandwich, tri = mgcv::trind.generator(3),
                  initialize = initialize, postproc = postproc,
                  residuals = residuals, linfo = stats, rd = rd,

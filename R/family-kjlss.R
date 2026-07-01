@@ -218,10 +218,18 @@ kjlss <- function(link = list("tanhalf", "logit", "identity", "identity")) {
     tt <- .kj_terms(y, mu, gamma, u1, u2, deriv = deriv > 0)
     l0 <- tt$l0
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; inert otherwise):
+    ## a ridge on the disc-chart coordinates (u1, u2) toward 0 = wrapped Cauchy,
+    ## keeping the shape off the feasibility-disc boundary where the kernel
+    ## denominator D -> 0 and the Hessian (~ 1/(1-rho)^6) blows up.
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(mu, gamma, u1, u2), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       l1 <- tt$l1            # n x 4 : mu, gamma, u1, u2
       l2 <- tt$l2            # n x 10 : combinations_with_replacement order
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta0),
                    family$linfo[[2]]$mu.eta(eta1),
                    family$linfo[[3]]$mu.eta(eta2),
@@ -339,6 +347,7 @@ kjlss <- function(link = list("tanhalf", "logit", "identity", "identity")) {
   structure(list(family = "kjlss", ll = ll, link = paste(link), nlp = 4,
                  param_names = c("mu", "gamma", "u1", "u2"),
                  param_circular = c(TRUE, FALSE, FALSE, FALSE),
+                 degen = list(.degen_ridge(3L), .degen_ridge(4L)),
                  sandwich = sandwich, tri = mgcv::trind.generator(4),
                  initialize = initialize, postproc = postproc,
                  residuals = residuals, linfo = stats, rd = rd,

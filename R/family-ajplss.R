@@ -263,6 +263,12 @@ ajplss <- function(link = list("tanhalf", "log", "identity", "tanh")) {
     if (any(unif)) h0[unif] <- 0
     l0 <- h0 + logc
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; inert otherwise):
+    ## kappa toward 0 (linear), shape psi toward 0 = vM (ridge), asymmetry nu off
+    ## its +/-1 wall (boundary).
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(xi, kappa, psi, nu), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       ## l1: d l / d(xi, kappa, psi, nu)
@@ -282,6 +288,7 @@ ajplss <- function(link = list("tanhalf", "log", "identity", "tanh")) {
                   ts$hpp - M[, 6],
                   ts$hphip * cphi - M[, 8],
                   ts$hphiphi * cphi * cphi - M[, 9])
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta0),
                    family$linfo[[2]]$mu.eta(eta1),
                    family$linfo[[3]]$mu.eta(eta2),
@@ -392,6 +399,14 @@ ajplss <- function(link = list("tanhalf", "log", "identity", "tanh")) {
   structure(list(family = "ajplss", ll = ll, link = paste(link), nlp = 4,
                  param_names = c("xi", "kappa", "psi", "nu"),
                  param_circular = c(TRUE, FALSE, FALSE, FALSE),
+                 ## firmer priors (scale > 1) on the quadrature family's peakedness
+                 ## psi and asymmetry nu keep them in the range where the asymmetric
+                 ## Jones-Pewsey normalizer stays fast and non-singular, so c = 1
+                 ## holds as the default. kappa stays at the default scale (a
+                 ## stronger pull would zero a diffuse component; the size-aware
+                 ## lambda already caps it). Standalone fits are unaffected.
+                 degen = list(.degen_linear(2L), .degen_ridge(3L, 30),
+                              .degen_boundary_sym(4L, 1, 10)),
                  sandwich = sandwich, tri = mgcv::trind.generator(4),
                  initialize = initialize, postproc = postproc,
                  residuals = residuals, linfo = stats, rd = rd,

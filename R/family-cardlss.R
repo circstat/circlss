@@ -156,6 +156,11 @@ cardlss <- function(link = list("tanhalf", "logithalf")) {
     P <- 1 + 2 * rho * cd            # density numerator, 1 + 2*rho*cos(d)
     l0 <- log1p(2 * rho * cd) - log(2 * pi)
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; inert otherwise).
+    ## boundary kernel keeps rho off its 1/2 wall, where 1/P^2 blows the Hessian up.
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(mu, rho), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       w <- 1 / P
@@ -166,6 +171,7 @@ cardlss <- function(link = list("tanhalf", "logithalf")) {
       l2 <- cbind(-2 * rho * (cd * P + 2 * rho * s * s) * w2,
                   2 * s * w2,
                   -4 * cd * cd * w2)
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta),
                    family$linfo[[2]]$mu.eta(eta1))
       g2 <- cbind(family$linfo[[1]]$d2link(mu),
@@ -264,6 +270,7 @@ cardlss <- function(link = list("tanhalf", "logithalf")) {
   structure(list(family = "cardlss", ll = ll, link = paste(link), nlp = 2,
                  param_names = c("mu", "rho"),
                  param_circular = c(TRUE, FALSE),
+                 degen = list(.degen_boundary_upper(2L, 0.5)),
                  sandwich = sandwich, tri = mgcv::trind.generator(2),
                  initialize = initialize, postproc = postproc,
                  residuals = residuals, linfo = stats, rd = rd,

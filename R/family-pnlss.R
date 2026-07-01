@@ -168,6 +168,12 @@ pnlss <- function(link = list("identity", "identity")) {
     l0 <- -0.5 * s * s - 0.5 * log(2 * pi) + pnorm(t, log.p = TRUE) +
       log(t + Rm)
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; inert otherwise).
+    ## a radial ridge on (mu1, mu2): shrinks the concentration ||mu|| toward 0
+    ## (uniform) while preserving the mean direction atan2(mu2, mu1).
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(mu1, mu2), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       g1 <- 1 / (t + Rm)
@@ -178,6 +184,7 @@ pnlss <- function(link = list("identity", "identity")) {
       l2 <- cbind(g2 * cy * cy - sy * sy,
                   (g2 + 1) * cy * sy,
                   g2 * sy * sy - cy * cy)
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta),
                    family$linfo[[2]]$mu.eta(eta1))
       g2l <- cbind(family$linfo[[1]]$d2link(mu1),
@@ -280,6 +287,7 @@ pnlss <- function(link = list("identity", "identity")) {
   structure(list(family = "pnlss", ll = ll, link = paste(link), nlp = 2,
                  param_names = c("mu1", "mu2"),
                  param_circular = c(FALSE, FALSE),
+                 degen = list(.degen_ridge(1L), .degen_ridge(2L)),
                  derived = list(
                    direction = function(fit) atan2(fit[, 2], fit[, 1])),
                  sandwich = sandwich, tri = mgcv::trind.generator(2),

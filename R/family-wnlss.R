@@ -241,11 +241,16 @@ wnlss <- function(link = list("tanhalf", "logit")) {
     tw <- .wn_terms(d, rho, deriv = if (deriv) 1 else 0)
     l0 <- tw$l0
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; inert otherwise).
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(mu, rho), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       ## l1: d l / d(mu, rho); l2 columns ordered (mm, mr, rr)
       l1 <- cbind(tw$lmu, tw$lrho)
       l2 <- cbind(tw$lmm, tw$lmr, tw$lrr)
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta),
                    family$linfo[[2]]$mu.eta(eta1))
       g2 <- cbind(family$linfo[[1]]$d2link(mu),
@@ -332,6 +337,7 @@ wnlss <- function(link = list("tanhalf", "logit")) {
   structure(list(family = "wnlss", ll = ll, link = paste(link), nlp = 2,
                  param_names = c("mu", "rho"),
                  param_circular = c(TRUE, FALSE),
+                 degen = list(.degen_boundary_upper(2L, 1)),
                  sandwich = sandwich, tri = mgcv::trind.generator(2),
                  initialize = initialize, postproc = postproc,
                  residuals = residuals, linfo = stats, rd = rd,

@@ -236,6 +236,12 @@ ibslss <- function(link = list("tanhalf", "log", "tanh", "tanh")) {
     ts <- .ibs_terms(y, xi, kappa, nu, lambda, deriv = deriv > 0)
     l0 <- ts$l0
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; inert otherwise):
+    ## kappa toward 0 (linear); skewness nu and peakedness lambda off their +/-1
+    ## walls (boundary).
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(xi, kappa, nu, lambda), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       ## l1 columns (xi, kappa, nu, lambda) and l2 columns (xx, xk, xn, xl, kk,
@@ -243,6 +249,7 @@ ibslss <- function(link = list("tanhalf", "log", "tanh", "tanh")) {
       ## combinations_with_replacement order.
       l1 <- ts$l1
       l2 <- ts$l2
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta0),
                    family$linfo[[2]]$mu.eta(eta1),
                    family$linfo[[3]]$mu.eta(eta2),
@@ -358,6 +365,14 @@ ibslss <- function(link = list("tanhalf", "log", "tanh", "tanh")) {
   structure(list(family = "ibslss", ll = ll, link = paste(link), nlp = 4,
                  param_names = c("xi", "kappa", "nu", "lambda"),
                  param_circular = c(TRUE, FALSE, FALSE, FALSE),
+                 ## firmer priors (scale > 1) on the quadrature family's skewness nu
+                 ## and peakedness lambda keep them in the range where the
+                 ## inverse-Batschelet normalizer stays fast and non-singular, so
+                 ## c = 1 holds as the default. kappa stays at the default scale (a
+                 ## stronger pull would zero a diffuse component; the size-aware
+                 ## lambda already caps it). Standalone fits are unaffected.
+                 degen = list(.degen_linear(2L), .degen_boundary_sym(3L, 1, 10),
+                              .degen_boundary_sym(4L, 1, 10)),
                  sandwich = sandwich, tri = mgcv::trind.generator(4),
                  initialize = initialize, postproc = postproc,
                  residuals = residuals, linfo = stats, rd = rd,

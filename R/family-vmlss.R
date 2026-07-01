@@ -148,12 +148,20 @@ vmlss <- function(link = list("tanhalf", "log")) {
     ## overflows from kappa ~ 713)
     l0 <- kappa * (cosd - 1) - log(2 * pi * besselI(kappa, 0, expon.scaled = TRUE))
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; map_lambda is NULL
+    ## for a standalone circ_gam, so this is inert there). Pulls kappa toward 0;
+    ## folded into the natural derivative blocks below before the wt-scaling, so it
+    ## is responsibility-weighted. ret$l0 stays unpenalized (the E-step density).
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(mu, kappa), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       a1 <- A1(kappa)
       ## l1: d l / d(mu, kappa); l2 columns ordered (mm, mk, kk)
       l1 <- cbind(kappa * sind, cosd - a1)
       l2 <- cbind(-kappa * cosd, sind, -A1prime(kappa, a1))
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta),
                    family$linfo[[2]]$mu.eta(eta1))
       g2 <- cbind(family$linfo[[1]]$d2link(mu),
@@ -284,6 +292,7 @@ vmlss <- function(link = list("tanhalf", "log")) {
   structure(list(family = "vmlss", ll = ll, link = paste(link), nlp = 2,
                  param_names = c("mu", "kappa"),
                  param_circular = c(TRUE, FALSE),
+                 degen = list(.degen_linear(2L)),
                  sandwich = sandwich, tri = mgcv::trind.generator(2),
                  initialize = initialize, postproc = postproc,
                  residuals = residuals, linfo = stats, rd = rd,

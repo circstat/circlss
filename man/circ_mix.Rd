@@ -38,6 +38,8 @@ circ_mix.control(
   tol = 1e-06,
   max_iter = 200L,
   min_size = 5L,
+  degen_strength = 1,
+  time_budget = NULL,
   kappa_cap = Inf,
   wfloor = 1e-08,
   seed = NULL,
@@ -162,8 +164,7 @@ markedly faster here and avoids the flat-REML step-failure warnings while select
 the same smoothness; for the \code{available.derivs = 0} families it is already
 \pkg{mgcv}'s default. Pass \code{"outer"} for outer Newton.}
 
-\item{start, kappa_cap}{Accepted but not yet used (kappa_cap is reserved for
-concentration capping).}
+\item{start}{Accepted but not yet used.}
 
 \item{sp_every}{Under \code{penalty = "scheduled"}, the number of EM iterations
 between REML re-selections of the smoothing parameters (held fixed in between).}
@@ -187,6 +188,38 @@ log-likelihood) and the maximum number of EM iterations per run.}
 \item{min_size}{The soft-size floor \eqn{n_k = \sum_i \gamma_{ik}} below which a
 component is dropped by a death move, and the minimum members a component must
 have to be split.}
+
+\item{degen_strength}{Strength \eqn{c} of the size-aware degeneracy guard, in
+diffuse pseudo-observations per component (default \code{1}; \code{0} turns the
+guard off, recovering the unguarded EM). A finite mixture's likelihood is
+unbounded -- a component can raise it without limit by concentrating onto a
+responsibility-weighted subset (its concentration \eqn{\kappa \to \infty}, or a
+bounded shape / peakedness parameter driven to its singular boundary, where the
+Hessian blows up and the M-step crashes or grinds). The guard adds to each
+component's weighted M-step a MAP penalty pulling its concentration / shape
+toward the family's diffuse (reduced) model with strength \eqn{\lambda_k = c /
+N_k}, where \eqn{N_k = \sum_i \gamma_{ik}} is the effective component size: it is
+worth about \eqn{c} diffuse observations, so it \strong{vanishes for a
+well-populated component} (the data dominate and the smooths fit normally under
+REML) and bites only as a component collapses onto a thin subset. One penalty
+handles all three failure modes (soft \eqn{\kappa \to \infty}, the boundary
+crash, the near-singular-grind hang); it is the every-family generalisation of
+capping the concentration. The penalty regularises the concentration / shape
+\emph{level} only and is orthogonal to the REML smooth penalty (which controls
+wiggliness), so \code{penalty = "auto"} is unaffected; it never alters the
+per-observation density used by the E-step, so the reported mixture
+log-likelihood and BIC stay on the data scale. Used by every circular family;
+inert for the linear-response legs (\code{\link{gausslss}}, \code{\link{gammalss}}).}
+
+\item{time_budget}{Optional per-restart wall-clock budget in seconds
+(\code{NULL}, the default, turns it off). A backstop behind \code{degen_strength}:
+an EM run exceeding it is aborted and treated exactly like a failed restart
+(skipped; only an all-restarts-failed run errors), so no single fit can hang. The
+degeneracy guard is the real fix; this only guarantees a bounded running time.}
+
+\item{kappa_cap}{Deprecated and ignored -- subsumed by \code{degen_strength} (the
+soft, size-aware, every-family generalisation of concentration capping). Passing
+a finite value warns; it will be removed in a future release.}
 
 \item{wfloor}{Lower bound applied to the responsibilities used as M-step prior
 weights, keeping them strictly positive without perturbing the fit.}

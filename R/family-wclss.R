@@ -137,6 +137,10 @@ wclss <- function(link = list("tanhalf", "logit")) {
     Dq <- (1 - rho)^2 + 4 * rho * sin(0.5 * d)^2
     l0 <- log1p(-rho) + log1p(rho) - log(2 * pi) - log(Dq)
     l <- sum(wt * l0)
+    ## size-aware MAP degeneracy penalty (circ_mix M-step only; inert otherwise).
+    pen <- if (.degen_active(family))
+      .lss_map_penalty(family, cbind(mu, rho), family$map_lambda) else NULL
+    if (!is.null(pen)) l <- l + sum(wt * pen$l0)
 
     if (deriv) {
       w <- 1 / Dq
@@ -150,6 +154,7 @@ wclss <- function(link = list("tanhalf", "logit")) {
       l2 <- cbind(-2 * rho * cd * w + Dm * Dm * w2,
                   2 * s * w + Dm * Dr * w2,
                   -2 * (1 + rho * rho) / om^2 - 2 * w + Dr * Dr * w2)
+      if (!is.null(pen)) { l1 <- l1 + pen$l1; l2 <- l2 + pen$l2 }
       ig1 <- cbind(family$linfo[[1]]$mu.eta(eta),
                    family$linfo[[2]]$mu.eta(eta1))
       g2 <- cbind(family$linfo[[1]]$d2link(mu),
@@ -275,6 +280,7 @@ wclss <- function(link = list("tanhalf", "logit")) {
   structure(list(family = "wclss", ll = ll, link = paste(link), nlp = 2,
                  param_names = c("mu", "rho"),
                  param_circular = c(TRUE, FALSE),
+                 degen = list(.degen_linear(2L)),
                  sandwich = sandwich, tri = mgcv::trind.generator(2),
                  initialize = initialize, postproc = postproc,
                  residuals = residuals, linfo = stats, rd = rd,
