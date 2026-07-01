@@ -41,6 +41,8 @@ circ_mix.control(
   tol = 1e-06,
   max_iter = 200L,
   min_size = 5L,
+  degen_strength = 1,
+  time_budget = NULL,
   kappa_cap = Inf,
   wfloor = 1e-08,
   seed = NULL,
@@ -217,10 +219,9 @@ predict(
   families it is already mgcv's default. Pass `"outer"` for outer
   Newton.
 
-- start, kappa_cap:
+- start:
 
-  Accepted but not yet used (kappa_cap is reserved for concentration
-  capping).
+  Accepted but not yet used.
 
 - sp_every:
 
@@ -259,6 +260,49 @@ predict(
   The soft-size floor \\n_k = \sum_i \gamma\_{ik}\\ below which a
   component is dropped by a death move, and the minimum members a
   component must have to be split.
+
+- degen_strength:
+
+  Strength \\c\\ of the size-aware degeneracy guard, in diffuse
+  pseudo-observations per component (default `1`; `0` turns the guard
+  off, recovering the unguarded EM). A finite mixture's likelihood is
+  unbounded – a component can raise it without limit by concentrating
+  onto a responsibility-weighted subset (its concentration \\\kappa \to
+  \infty\\, or a bounded shape / peakedness parameter driven to its
+  singular boundary, where the Hessian blows up and the M-step crashes
+  or grinds). The guard adds to each component's weighted M-step a MAP
+  penalty pulling its concentration / shape toward the family's diffuse
+  (reduced) model with strength \\\lambda_k = c / N_k\\, where \\N_k =
+  \sum_i \gamma\_{ik}\\ is the effective component size: it is worth
+  about \\c\\ diffuse observations, so it **vanishes for a
+  well-populated component** (the data dominate and the smooths fit
+  normally under REML) and bites only as a component collapses onto a
+  thin subset. One penalty handles all three failure modes (soft
+  \\\kappa \to \infty\\, the boundary crash, the near-singular-grind
+  hang); it is the every-family generalisation of capping the
+  concentration. The penalty regularises the concentration / shape
+  *level* only and is orthogonal to the REML smooth penalty (which
+  controls wiggliness), so `penalty = "auto"` is unaffected; it never
+  alters the per-observation density used by the E-step, so the reported
+  mixture log-likelihood and BIC stay on the data scale. Used by every
+  circular family; inert for the linear-response legs
+  ([`gausslss`](https://circstat.github.io/circlss/reference/gausslss.md),
+  [`gammalss`](https://circstat.github.io/circlss/reference/gammalss.md)).
+
+- time_budget:
+
+  Optional per-restart wall-clock budget in seconds (`NULL`, the
+  default, turns it off). A backstop behind `degen_strength`: an EM run
+  exceeding it is aborted and treated exactly like a failed restart
+  (skipped; only an all-restarts-failed run errors), so no single fit
+  can hang. The degeneracy guard is the real fix; this only guarantees a
+  bounded running time.
+
+- kappa_cap:
+
+  Deprecated and ignored – subsumed by `degen_strength` (the soft,
+  size-aware, every-family generalisation of concentration capping).
+  Passing a finite value warns; it will be removed in a future release.
 
 - wfloor:
 

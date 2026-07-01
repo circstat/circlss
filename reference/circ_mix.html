@@ -98,6 +98,8 @@ entirely by <code>family</code>.</p>
 <span>  tol <span class="op">=</span> <span class="fl">1e-06</span>,</span>
 <span>  max_iter <span class="op">=</span> <span class="fl">200L</span>,</span>
 <span>  min_size <span class="op">=</span> <span class="fl">5L</span>,</span>
+<span>  degen_strength <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  time_budget <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  kappa_cap <span class="op">=</span> <span class="cn">Inf</span>,</span>
 <span>  wfloor <span class="op">=</span> <span class="fl">1e-08</span>,</span>
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -261,9 +263,8 @@ the same smoothness; for the <code>available.derivs = 0</code> families it is al
 <span class="pkg">mgcv</span>'s default. Pass <code>"outer"</code> for outer Newton.</p></dd>
 
 
-<dt id="arg-start-kappa-cap">start, kappa_cap<a class="anchor" aria-label="anchor" href="#arg-start-kappa-cap"></a></dt>
-<dd><p>Accepted but not yet used (kappa_cap is reserved for
-concentration capping).</p></dd>
+<dt id="arg-start">start<a class="anchor" aria-label="anchor" href="#arg-start"></a></dt>
+<dd><p>Accepted but not yet used.</p></dd>
 
 
 <dt id="arg-sp-every">sp_every<a class="anchor" aria-label="anchor" href="#arg-sp-every"></a></dt>
@@ -299,6 +300,44 @@ log-likelihood) and the maximum number of EM iterations per run.</p></dd>
 <dd><p>The soft-size floor \(n_k = \sum_i \gamma_{ik}\) below which a
 component is dropped by a death move, and the minimum members a component must
 have to be split.</p></dd>
+
+
+<dt id="arg-degen-strength">degen_strength<a class="anchor" aria-label="anchor" href="#arg-degen-strength"></a></dt>
+<dd><p>Strength \(c\) of the size-aware degeneracy guard, in
+diffuse pseudo-observations per component (default <code>1</code>; <code>0</code> turns the
+guard off, recovering the unguarded EM). A finite mixture's likelihood is
+unbounded – a component can raise it without limit by concentrating onto a
+responsibility-weighted subset (its concentration \(\kappa \to \infty\), or a
+bounded shape / peakedness parameter driven to its singular boundary, where the
+Hessian blows up and the M-step crashes or grinds). The guard adds to each
+component's weighted M-step a MAP penalty pulling its concentration / shape
+toward the family's diffuse (reduced) model with strength \(\lambda_k = c /
+N_k\), where \(N_k = \sum_i \gamma_{ik}\) is the effective component size: it is
+worth about \(c\) diffuse observations, so it <strong>vanishes for a
+well-populated component</strong> (the data dominate and the smooths fit normally under
+REML) and bites only as a component collapses onto a thin subset. One penalty
+handles all three failure modes (soft \(\kappa \to \infty\), the boundary
+crash, the near-singular-grind hang); it is the every-family generalisation of
+capping the concentration. The penalty regularises the concentration / shape
+<em>level</em> only and is orthogonal to the REML smooth penalty (which controls
+wiggliness), so <code>penalty = "auto"</code> is unaffected; it never alters the
+per-observation density used by the E-step, so the reported mixture
+log-likelihood and BIC stay on the data scale. Used by every circular family;
+inert for the linear-response legs (<code><a href="gausslss.html">gausslss</a></code>, <code><a href="gammalss.html">gammalss</a></code>).</p></dd>
+
+
+<dt id="arg-time-budget">time_budget<a class="anchor" aria-label="anchor" href="#arg-time-budget"></a></dt>
+<dd><p>Optional per-restart wall-clock budget in seconds
+(<code>NULL</code>, the default, turns it off). A backstop behind <code>degen_strength</code>:
+an EM run exceeding it is aborted and treated exactly like a failed restart
+(skipped; only an all-restarts-failed run errors), so no single fit can hang. The
+degeneracy guard is the real fix; this only guarantees a bounded running time.</p></dd>
+
+
+<dt id="arg-kappa-cap">kappa_cap<a class="anchor" aria-label="anchor" href="#arg-kappa-cap"></a></dt>
+<dd><p>Deprecated and ignored – subsumed by <code>degen_strength</code> (the
+soft, size-aware, every-family generalisation of concentration capping). Passing
+a finite value warns; it will be removed in a future release.</p></dd>
 
 
 <dt id="arg-wfloor">wfloor<a class="anchor" aria-label="anchor" href="#arg-wfloor"></a></dt>
